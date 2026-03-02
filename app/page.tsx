@@ -3,6 +3,8 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import AspectRatioPicker, { AspectRatio } from "@/components/AspectRatioPicker";
+import type { AppState, AppMode } from "@/types";
+import { DEFAULT_APP_STATE } from "@/types";
 
 // Recorder uses browser APIs — disable SSR
 const Recorder = dynamic(() => import("@/components/Recorder"), { ssr: false });
@@ -12,6 +14,11 @@ export default function Home() {
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recorderKey, setRecorderKey] = useState(0);
+  const [appState, setAppState] = useState<AppState>(DEFAULT_APP_STATE);
+
+  const setMode = useCallback((patch: Partial<AppMode>) => {
+    setAppState((prev) => ({ ...prev, mode: { ...prev.mode, ...patch } }));
+  }, []);
 
   const handleVideoReady = useCallback((blob: Blob) => {
     setVideoBlob(blob);
@@ -64,6 +71,8 @@ export default function Home() {
           aspectRatio={aspectRatio}
           onVideoReady={handleVideoReady}
           onRecordingStart={handleStartRecording}
+          mode={appState.mode}
+          onModeChange={setMode}
         />
 
         {/* Download section */}

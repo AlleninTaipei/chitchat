@@ -7,6 +7,7 @@ import { useMediaRecorder } from "@/hooks/useMediaRecorder";
 import SubtitleOverlay, { SubtitleLine } from "./SubtitleOverlay";
 import type { AspectRatio } from "./AspectRatioPicker";
 import type { Message } from "@/app/api/chat/route";
+import type { AppMode } from "@/types";
 
 interface CanvasDimensions {
   width: number;
@@ -30,6 +31,8 @@ interface RecorderProps {
   aspectRatio: AspectRatio;
   onVideoReady: (blob: Blob) => void;
   onRecordingStart?: () => void;
+  mode?: AppMode;
+  onModeChange?: (patch: Partial<AppMode>) => void;
 }
 
 export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }: RecorderProps) {
