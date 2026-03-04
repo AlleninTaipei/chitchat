@@ -211,7 +211,7 @@ export default function Recorder({
 
         const wrappedGroups = allLines.map((line) => ({
           ...line,
-          wrapped: wrapText(ctx, `${line.speaker === "user" ? "👤" : "🤖"} ${line.text}`, maxW),
+          wrapped: wrapText(ctx, `${line.speaker === "user" ? "😊" : "💡"} ${line.text}`, maxW),
         }));
 
         const totalRows = wrappedGroups.reduce((sum, g) => sum + g.wrapped.length, 0);
@@ -246,7 +246,7 @@ export default function Recorder({
   const sendToAI = useCallback(
     async (userMessage: string) => {
       if (teleprompterRef.current) {
-        setSubtitleLines((prev) => [...prev, { speaker: "user", text: userMessage }]);
+        setSubtitleLines([{ speaker: "user", text: userMessage }]);
         return;
       }
 
@@ -257,10 +257,7 @@ export default function Recorder({
         { role: "user", content: userMessage },
       ];
       setHistory(newHistory);
-      setSubtitleLines((prev) => [
-        ...prev,
-        { speaker: "user", text: userMessage },
-      ]);
+      setSubtitleLines([{ speaker: "user", text: userMessage }]);
       setAiText("");
       aiTextRef.current = "";
       setIsAiResponding(true);
@@ -290,10 +287,7 @@ export default function Recorder({
           ...newHistory,
           { role: "assistant", content: full },
         ]);
-        setSubtitleLines((prev) => [
-          ...prev,
-          { speaker: "ai", text: full },
-        ]);
+        setSubtitleLines([{ speaker: "ai", text: full }]);
         setAiText("");
         aiTextRef.current = "";
         if (voiceEnabledRef.current) speak(full);

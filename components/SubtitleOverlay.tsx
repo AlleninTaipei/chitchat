@@ -28,7 +28,7 @@ export default function SubtitleOverlay({
             style={{ textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}
           >
             <span className="mr-1">
-              {line.speaker === "user" ? "👤" : "🤖"}
+              {line.speaker === "user" ? "😊" : "💡"}
             </span>
             {line.text}
           </div>
@@ -38,7 +38,7 @@ export default function SubtitleOverlay({
             className="text-center text-white/60 text-sm italic"
             style={{ textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}
           >
-            👤 {interimTranscript}
+            😊 {interimTranscript}
           </div>
         )}
       </div>
