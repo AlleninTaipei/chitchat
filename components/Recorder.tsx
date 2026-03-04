@@ -61,6 +61,7 @@ export default function Recorder({
   const subtitleLinesRef = useRef<SubtitleLine[]>([]);
   const voiceEnabledRef = useRef(true);
   const cameraEnabledRef = useRef(mode?.cameraEnabled ?? true);
+  const teleprompterRef = useRef(mode?.teleprompter ?? false);
 
   const dims = getDimensions(aspectRatio);
 
@@ -80,6 +81,10 @@ export default function Recorder({
   useEffect(() => {
     cameraEnabledRef.current = mode?.cameraEnabled ?? true;
   }, [mode?.cameraEnabled]);
+
+  useEffect(() => {
+    teleprompterRef.current = mode?.teleprompter ?? false;
+  }, [mode?.teleprompter]);
 
   // Camera setup — always try video+audio; gracefully fall back to audio-only
   useEffect(() => {
@@ -240,6 +245,11 @@ export default function Recorder({
 
   const sendToAI = useCallback(
     async (userMessage: string) => {
+      if (teleprompterRef.current) {
+        setSubtitleLines((prev) => [...prev, { speaker: "user", text: userMessage }]);
+        return;
+      }
+
       if (isAiResponding) return;
 
       const newHistory: Message[] = [
@@ -338,6 +348,7 @@ export default function Recorder({
         : { maxWidth: "min(854px, 90vw)", width: "100%" };
 
   const cameraEnabled = mode?.cameraEnabled ?? true;
+  const teleprompterMode = mode?.teleprompter ?? false;
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -376,6 +387,11 @@ export default function Recorder({
           {isAiResponding && (
             <span className="bg-cyan-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
               AI...
+            </span>
+          )}
+          {teleprompterMode && (
+            <span className="bg-amber-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+              TELE
             </span>
           )}
           {isSpeaking && (
@@ -424,6 +440,17 @@ export default function Recorder({
           }`}
         >
           {cameraEnabled ? "📷" : "🚫"}
+        </button>
+        {/* Teleprompter toggle */}
+        <button
+          onClick={() => onModeChange?.({ teleprompter: !teleprompterMode })}
+          disabled={recordingState === "recording"}
+          title={teleprompterMode ? "切換到對話模式" : "切換到提詞機模式"}
+          className={`px-3 py-2.5 text-white text-lg rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            teleprompterMode ? "bg-amber-700 ring-1 ring-amber-400/50" : "bg-gray-700 hover:bg-gray-600"
+          }`}
+        >
+          {teleprompterMode ? "📺" : "💬"}
         </button>
         {/* Voice toggle */}
         <button
