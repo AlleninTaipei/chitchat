@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import AspectRatioPicker, { AspectRatio } from "@/components/AspectRatioPicker";
+import PersonaPicker from "@/components/PersonaPicker";
 import type { AppState, AppMode } from "@/types";
 import { DEFAULT_APP_STATE } from "@/types";
 
@@ -18,6 +19,10 @@ export default function Home() {
 
   const setMode = useCallback((patch: Partial<AppMode>) => {
     setAppState((prev) => ({ ...prev, mode: { ...prev.mode, ...patch } }));
+  }, []);
+
+  const setPersona = useCallback((persona: AppState["persona"]) => {
+    setAppState((prev) => ({ ...prev, persona }));
   }, []);
 
   const handleVideoReady = useCallback((blob: Blob) => {
@@ -73,7 +78,17 @@ export default function Home() {
           onRecordingStart={handleStartRecording}
           mode={appState.mode}
           onModeChange={setMode}
+          persona={appState.persona}
         />
+
+        {/* Persona picker */}
+        <div className="w-full max-w-sm">
+          <PersonaPicker
+            value={appState.persona}
+            onChange={setPersona}
+            disabled={isRecording}
+          />
+        </div>
 
         {/* Download section */}
         {videoBlob && (

@@ -7,7 +7,8 @@ import { useMediaRecorder } from "@/hooks/useMediaRecorder";
 import SubtitleOverlay, { SubtitleLine } from "./SubtitleOverlay";
 import type { AspectRatio } from "./AspectRatioPicker";
 import type { Message } from "@/app/api/chat/route";
-import type { AppMode } from "@/types";
+import type { AppMode, AppState } from "@/types";
+import { getSystemPrompt } from "@/lib/personas";
 
 // Default background color for conversation-only mode
 const CANVAS_BG = "#09090b";
@@ -36,6 +37,7 @@ interface RecorderProps {
   onRecordingStart?: () => void;
   mode?: AppMode;
   onModeChange?: (patch: Partial<AppMode>) => void;
+  persona?: AppState["persona"];
 }
 
 export default function Recorder({
@@ -44,6 +46,7 @@ export default function Recorder({
   onRecordingStart,
   mode,
   onModeChange,
+  persona,
 }: RecorderProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -266,7 +269,11 @@ export default function Recorder({
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: userMessage, history }),
+          body: JSON.stringify({
+            message: userMessage,
+            history,
+            systemPrompt: persona ? getSystemPrompt(persona) : undefined,
+          }),
         });
 
         if (!res.body) throw new Error("No response body");
