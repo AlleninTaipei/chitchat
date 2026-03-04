@@ -9,6 +9,9 @@ import type { AspectRatio } from "./AspectRatioPicker";
 import type { Message } from "@/app/api/chat/route";
 import type { AppMode } from "@/types";
 
+// Default background color for conversation-only mode
+const CANVAS_BG = "#09090b";
+
 interface CanvasDimensions {
   width: number;
   height: number;
@@ -35,7 +38,13 @@ interface RecorderProps {
   onModeChange?: (patch: Partial<AppMode>) => void;
 }
 
-export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }: RecorderProps) {
+export default function Recorder({
+  aspectRatio,
+  onVideoReady,
+  onRecordingStart,
+  mode,
+  onModeChange,
+}: RecorderProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const animFrameRef = useRef<number>(0);
@@ -51,6 +60,7 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
   const aiTextRef = useRef("");
   const subtitleLinesRef = useRef<SubtitleLine[]>([]);
   const voiceEnabledRef = useRef(true);
+  const cameraEnabledRef = useRef(mode?.cameraEnabled ?? true);
 
   const dims = getDimensions(aspectRatio);
 
@@ -67,7 +77,11 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
     subtitleLinesRef.current = subtitleLines;
   }, [subtitleLines]);
 
-  // Camera setup
+  useEffect(() => {
+    cameraEnabledRef.current = mode?.cameraEnabled ?? true;
+  }, [mode?.cameraEnabled]);
+
+  // Camera setup — always try video+audio; gracefully fall back to audio-only
   useEffect(() => {
     let cancelled = false;
     async function setup() {
@@ -90,8 +104,18 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
           videoRef.current.srcObject = new MediaStream(stream.getVideoTracks());
           await videoRef.current.play();
         }
-      } catch (err) {
-        console.error("Camera/mic access error:", err);
+      } catch {
+        // Camera not available — try audio only
+        try {
+          const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
+          if (!cancelled) {
+            setMicStream(audioOnly);
+            // Notify parent that camera is unavailable
+            onModeChange?.({ cameraEnabled: false });
+          }
+        } catch (err) {
+          console.error("Mic access error:", err);
+        }
       }
     }
     setup();
@@ -99,6 +123,7 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
       cancelled = true;
       cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Canvas draw loop
@@ -138,24 +163,30 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
       canvas.width = width;
       canvas.height = height;
 
-      // Draw camera feed (cover fill)
-      const vAspect = video.videoWidth / (video.videoHeight || 1);
-      const cAspect = width / height;
-      let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight;
+      if (cameraEnabledRef.current && video.readyState >= 2) {
+        // Draw camera feed (cover fill, mirrored)
+        const vAspect = video.videoWidth / (video.videoHeight || 1);
+        const cAspect = width / height;
+        let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight;
 
-      if (vAspect > cAspect) {
-        sw = video.videoHeight * cAspect;
-        sx = (video.videoWidth - sw) / 2;
+        if (vAspect > cAspect) {
+          sw = video.videoHeight * cAspect;
+          sx = (video.videoWidth - sw) / 2;
+        } else {
+          sh = video.videoWidth / cAspect;
+          sy = (video.videoHeight - sh) / 2;
+        }
+
+        ctx.save();
+        ctx.translate(width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
+        ctx.restore();
       } else {
-        sh = video.videoWidth / cAspect;
-        sy = (video.videoHeight - sh) / 2;
+        // Conversation-only mode: solid background
+        ctx.fillStyle = CANVAS_BG;
+        ctx.fillRect(0, 0, width, height);
       }
-
-      ctx.save();
-      ctx.translate(width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
-      ctx.restore();
 
       // Subtitles
       const lines = subtitleLinesRef.current.slice(-3);
@@ -173,7 +204,6 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
         const padding = fontSize * 0.6;
         const maxW = width * 0.85;
 
-        // Calculate total height
         const wrappedGroups = allLines.map((line) => ({
           ...line,
           wrapped: wrapText(ctx, `${line.speaker === "user" ? "👤" : "🤖"} ${line.text}`, maxW),
@@ -295,6 +325,10 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
     setRecordingState("stopped");
   }
 
+  function handleCameraToggle() {
+    onModeChange?.({ cameraEnabled: !(mode?.cameraEnabled ?? true) });
+  }
+
   // Container style for aspect ratio
   const containerStyle: React.CSSProperties =
     aspectRatio === "9:16"
@@ -302,6 +336,8 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
       : aspectRatio === "1:1"
         ? { maxWidth: "min(540px, 60vw)", width: "100%" }
         : { maxWidth: "min(854px, 90vw)", width: "100%" };
+
+  const cameraEnabled = mode?.cameraEnabled ?? true;
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -349,6 +385,13 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
             </span>
           )}
         </div>
+
+        {/* Camera-off indicator */}
+        {!cameraEnabled && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="text-white/20 text-4xl select-none">&#128247;&#824;</span>
+          </div>
+        )}
       </div>
 
       {/* Controls */}
@@ -369,6 +412,20 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
             停止錄影
           </button>
         )}
+        {/* Camera toggle */}
+        <button
+          onClick={handleCameraToggle}
+          disabled={recordingState === "recording"}
+          title={cameraEnabled ? "關閉鏡頭" : "開啟鏡頭"}
+          className={`px-3 py-2.5 text-white text-lg rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            cameraEnabled
+              ? "bg-gray-700 hover:bg-gray-600"
+              : "bg-gray-900 ring-1 ring-white/30 hover:bg-gray-800"
+          }`}
+        >
+          {cameraEnabled ? "📷" : "🚫"}
+        </button>
+        {/* Voice toggle */}
         <button
           onClick={() => setVoiceEnabled((v) => !v)}
           title={voiceEnabled ? "靜音" : "開啟語音"}
