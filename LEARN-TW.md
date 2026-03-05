@@ -411,3 +411,139 @@ npm run dev    # localhost:3000
 npm run build  # 正式環境建置
 npm run lint   # ESLint
 ```
+
+---
+
+## 8. 打包為桌面應用程式（Electron）
+
+### 為什麼不能直接「複製資料夾」到 Windows？
+
+Chitchat 是一個 Next.js Web App，本質上由兩部分組成：
+
+- 一個 Node.js 伺服器（負責 `/api/chat` 路由）
+- 一堆靜態資源（JS / CSS / HTML）
+
+在 Windows 上執行需要先安裝 Node.js、執行 `npm run build && npm run start`，再開瀏覽器連 `localhost:3000`。這不是「可執行檔」，而是需要環境的開發產物。
+
+---
+
+### 打包成 `.exe` 的選項比較
+
+| 方案 | 原理 | 適合本專案？ | 大小 | macOS → Windows |
+|------|------|-------------|------|-----------------|
+| **Electron** | 內建 Chromium + Node.js | ✅ 最合適 | ~250 MB | 可行 |
+| Tauri | 系統 WebView + Rust | ⚠️ 需大幅改寫 | ~15 MB | 需額外編譯鏈 |
+| pkg / Node SEA | 只打包 Node.js，無瀏覽器 | ❌ 缺 Web API | ~50 MB | 需注意 |
+| 靜態輸出 | `next export` → HTML 檔案 | ❌ API route 會壞 | 小 | N/A |
+
+**結論：Electron 是唯一不需要大改程式碼的方案。** 本專案的每一個核心 API — `getUserMedia`、Web Speech API、Canvas、`MediaRecorder` — 都需要 Chromium 才能執行，而 Electron 把 Chromium 和 Node.js 一起打包進去了。
+
+---
+
+### Electron 的運作模型
+
+```
+Windows 使用者點兩下 .exe
+        │
+        ▼
+  Electron Main Process（Node.js）
+        │
+        ├── fork()  .next/standalone/server.js（Next.js 伺服器，port 動態分配）
+        │
+        └── 等待伺服器就緒後建立 BrowserWindow
+                      │
+                      ▼
+              Chromium Renderer
+              載入 http://127.0.0.1:<port>
+              使用者在此操作（等同瀏覽器視窗）
+```
+
+---
+
+### Next.js `output: 'standalone'` 模式
+
+`next build` 加上此設定後，會額外產生 `.next/standalone/` 目錄，內含一個**自給自足的 Node.js server**，不需要完整的 `node_modules` 就能獨立執行：
+
+```
+.next/standalone/
+  server.js        ← 單一入口，PORT + HOSTNAME 由環境變數注入
+  node_modules/    ← 只包含 runtime 必要的依賴（精簡版）
+```
+
+> **注意：** Next.js 不會自動把靜態資源複製進去，需手動執行：
+> ```bash
+> cp -r .next/static  .next/standalone/.next/static
+> cp -r public        .next/standalone/public
+> ```
+> 本專案的 `scripts/prepare-electron.js` 會自動處理這一步。
+
+---
+
+### 從 macOS 交叉編譯 Windows 的限制
+
+| 目標格式 | 需要 Wine？ | 說明 |
+|---------|------------|------|
+| `.zip`（portable） | 不需要 ✅ | 解壓後直接執行 `Chitchat.exe` |
+| `nsis` 安裝程式 `.exe` | 需要 ⚠️ | `brew install --cask wine-stable` |
+| `portable` 單一 `.exe` | 需要 ⚠️ | 同上 |
+
+預設使用 `.zip` 目標，不需要 Wine 即可從 macOS 產生 Windows 版本。
+
+---
+
+### 執行時的網路需求
+
+| 功能 | 需要網路？ | Windows 可用？ |
+|------|----------|---------------|
+| 錄影 / Canvas | 不需要 | ✅ |
+| Web Speech API（zh-TW） | 需要（送至 Google 辨識） | ✅ |
+| Web Speech API（en-US） | 部分可離線 | ✅ |
+| Claude AI 回應 | 需要 | ✅ |
+| FFmpeg.wasm 縮時下載 | 首次需要（從 unpkg.com 下載） | ✅ |
+
+---
+
+### 打包指令
+
+```bash
+npm run build:electron:win   # macOS → Windows .zip（不需 Wine）
+npm run build:electron:mac   # macOS 本地 .dmg
+```
+
+### 產物結構
+
+```
+dist/
+  Chitchat-1.0.0-win.zip        ← 傳給 Windows 使用者的檔案（~195 MB）
+  win-unpacked/
+    Chitchat.exe                 ← 主程式（雙擊執行）
+    resources/
+      app.asar                   ← electron/main.js + preload.js
+      nextjs/                    ← Next.js standalone server
+        server.js
+        .next/static/
+        public/
+        node_modules/
+```
+
+### Windows 使用者操作步驟
+
+1. 解壓縮 `Chitchat-1.0.0-win.zip`
+2. 雙擊 `Chitchat.exe`
+3. 等約 3–5 秒（內部啟動 Next.js server）
+4. App 視窗出現後，輸入 Anthropic API Key 即可使用
+
+**不需要安裝 Node.js、Python 或任何其他環境。**
+
+---
+
+### 為何檔案這麼大（~195 MB）？
+
+| 內容 | 大小 |
+|------|------|
+| Chromium（瀏覽器引擎） | ~120 MB |
+| Node.js runtime | ~10 MB |
+| Next.js standalone server + deps | ~40 MB |
+| App 程式碼 | ~5 MB |
+
+這是 Electron 的「先天體重」——每個 Electron app 都帶著一個完整的 Chromium。若要縮小到 ~15 MB，需改用 Tauri，但須重寫後端架構。
