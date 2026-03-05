@@ -5,9 +5,11 @@ import dynamic from "next/dynamic";
 import AspectRatioPicker, { AspectRatio } from "@/components/AspectRatioPicker";
 import PersonaPicker from "@/components/PersonaPicker";
 import ApiKeyModal from "@/components/ApiKeyModal";
+import CharacterPicker from "@/components/CharacterPicker";
 import { useApiKey } from "@/hooks/useApiKey";
-import type { AppState, AppMode } from "@/types";
+import type { AppState, AppMode, ScriptLine } from "@/types";
 import { DEFAULT_APP_STATE } from "@/types";
+import { assignRoles } from "@/lib/scriptParser";
 
 // Recorder uses browser APIs — disable SSR
 const Recorder = dynamic(() => import("@/components/Recorder"), { ssr: false });
@@ -19,6 +21,29 @@ export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [recorderKey, setRecorderKey] = useState(0);
   const [appState, setAppState] = useState<AppState>(DEFAULT_APP_STATE);
+
+  // Script mode state
+  const [pendingScriptLines, setPendingScriptLines] = useState<ScriptLine[] | null>(null);
+  const [pendingCharacters, setPendingCharacters] = useState<string[]>([]);
+  const [scriptLines, setScriptLines] = useState<ScriptLine[] | null>(null);
+
+  const handleScriptParsed = useCallback((lines: ScriptLine[], characters: string[]) => {
+    setPendingScriptLines(lines);
+    setPendingCharacters(characters);
+  }, []);
+
+  const handleCharacterSelect = useCallback((character: string) => {
+    if (!pendingScriptLines) return;
+    setScriptLines(assignRoles(pendingScriptLines, character));
+    setPendingScriptLines(null);
+    setPendingCharacters([]);
+  }, [pendingScriptLines]);
+
+  const handleScriptClear = useCallback(() => {
+    setScriptLines(null);
+    setPendingScriptLines(null);
+    setPendingCharacters([]);
+  }, []);
 
   const setMode = useCallback((patch: Partial<AppMode>) => {
     setAppState((prev) => ({ ...prev, mode: { ...prev.mode, ...patch } }));
@@ -67,6 +92,15 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white flex flex-col">
+      {/* Character Picker Modal */}
+      {pendingScriptLines && pendingCharacters.length > 0 && (
+        <CharacterPicker
+          characters={pendingCharacters}
+          onSelect={handleCharacterSelect}
+          onCancel={() => { setPendingScriptLines(null); setPendingCharacters([]); }}
+        />
+      )}
+
       {/* API Key Modal */}
       {showModal && (
         <ApiKeyModal
@@ -112,6 +146,9 @@ export default function Home() {
           persona={appState.persona}
           apiKey={isUsingUserKey && typeof apiKey === "string" ? apiKey : undefined}
           onApiKeyMissing={openModal}
+          scriptLines={scriptLines ?? undefined}
+          onScriptLoad={handleScriptParsed}
+          onScriptClear={handleScriptClear}
         />
 
         {/* Persona picker */}

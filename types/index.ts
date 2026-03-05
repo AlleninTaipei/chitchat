@@ -32,6 +32,22 @@ export const DEFAULT_APP_STATE: AppState = {
   persona: { presetId: 'default' },
 }
 
+// Script Mode
+export interface ScriptLine {
+  id: string
+  character: string
+  text: string
+  role: 'user' | 'ai'
+}
+
+export interface ScriptRuntime {
+  enabled: boolean
+  lines: ScriptLine[]
+  currentIndex: number
+  userCharacter: string
+  allCharacters: string[]
+}
+
 // Conversation State Machine
 export type ConversationState =
   | 'idle' | 'ready' | 'listening' | 'transcribing'

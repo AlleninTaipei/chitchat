@@ -5,9 +5,10 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
 import { useMediaRecorder } from "@/hooks/useMediaRecorder";
 import SubtitleOverlay, { SubtitleLine } from "./SubtitleOverlay";
+import ScriptLoader from "./ScriptLoader";
 import type { AspectRatio } from "./AspectRatioPicker";
 import type { Message } from "@/app/api/chat/route";
-import type { AppMode, AppState } from "@/types";
+import type { AppMode, AppState, ScriptLine } from "@/types";
 import { getSystemPrompt } from "@/lib/personas";
 
 // Default background color for conversation-only mode
@@ -40,6 +41,9 @@ interface RecorderProps {
   persona?: AppState["persona"];
   apiKey?: string;
   onApiKeyMissing?: () => void;
+  scriptLines?: ScriptLine[];
+  onScriptLoad?: (lines: ScriptLine[], characters: string[]) => void;
+  onScriptClear?: () => void;
 }
 
 export default function Recorder({
@@ -51,6 +55,9 @@ export default function Recorder({
   persona,
   apiKey,
   onApiKeyMissing,
+  scriptLines,
+  onScriptLoad,
+  onScriptClear,
 }: RecorderProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -69,6 +76,14 @@ export default function Recorder({
   const voiceEnabledRef = useRef(true);
   const cameraEnabledRef = useRef(mode?.cameraEnabled ?? true);
   const teleprompterRef = useRef(mode?.teleprompter ?? false);
+
+  // Script mode state
+  const [currentScriptIndex, setCurrentScriptIndex] = useState(0);
+  const currentScriptIndexRef = useRef(0);
+  const scriptLinesRef = useRef<ScriptLine[] | undefined>(scriptLines);
+
+  useEffect(() => { scriptLinesRef.current = scriptLines; }, [scriptLines]);
+  useEffect(() => { currentScriptIndexRef.current = currentScriptIndex; }, [currentScriptIndex]);
 
   const dims = getDimensions(aspectRatio);
 
@@ -241,6 +256,82 @@ export default function Recorder({
         }
       }
 
+      // Script mode overlay
+      const sLines = scriptLinesRef.current;
+      if (sLines && sLines.length > 0) {
+        const idx = currentScriptIndexRef.current;
+        const scriptDone = idx >= sLines.length;
+        const scriptLine = sLines[idx];
+
+        // Progress indicator (top-right)
+        const progFontSize = Math.round(width * 0.022);
+        ctx.font = `${progFontSize}px sans-serif`;
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.textAlign = "right";
+        const progText = scriptDone ? "完" : `${idx + 1} / ${sLines.length}`;
+        ctx.fillText(progText, width - width * 0.03, height * 0.05);
+
+        const scriptFontSize = Math.round(width * 0.032);
+        const scriptPad = scriptFontSize * 0.7;
+        const scriptMaxW = width * 0.85;
+        ctx.font = `bold ${scriptFontSize}px sans-serif`;
+
+        if (scriptDone) {
+          // Completion message at centre
+          ctx.fillStyle = "rgba(0,0,0,0.65)";
+          ctx.beginPath();
+          ctx.roundRect(width * 0.1, height * 0.4, width * 0.8, scriptFontSize * 3, 10);
+          ctx.fill();
+          ctx.fillStyle = "#4ade80";
+          ctx.textAlign = "center";
+          ctx.fillText("劇本排練完成！", width / 2, height * 0.4 + scriptFontSize * 2);
+        } else if (scriptLine) {
+          const isUserTurn = scriptLine.role === "user";
+          const label = `${scriptLine.character}:`;
+          const labelLines = wrapText(ctx, label, scriptMaxW);
+          const textLines = wrapText(ctx, scriptLine.text, scriptMaxW);
+          const allScriptLines = [...labelLines, ...textLines];
+          const lineH = scriptFontSize * 1.4;
+          const boxH = allScriptLines.length * lineH + scriptPad * 2;
+
+          if (isUserTurn) {
+            // User turn: prompt at the bottom (above subtitle area)
+            const boxY = height - boxH - height * 0.18;
+            ctx.fillStyle = "rgba(0,0,0,0.6)";
+            ctx.beginPath();
+            ctx.roundRect(width * 0.075, boxY, width * 0.85, boxH, 10);
+            ctx.fill();
+            let y = boxY + scriptPad + scriptFontSize;
+            ctx.textAlign = "center";
+            for (let i = 0; i < allScriptLines.length; i++) {
+              ctx.fillStyle = i < labelLines.length ? "#fbbf24" : "#ffffff";
+              ctx.fillText(allScriptLines[i], width / 2, y);
+              y += lineH;
+            }
+            // "你的輪次" badge
+            const badgeFontSize = Math.round(width * 0.02);
+            ctx.font = `bold ${badgeFontSize}px sans-serif`;
+            ctx.fillStyle = "#fbbf24";
+            ctx.textAlign = "center";
+            ctx.fillText("你的輪次 — 說出台詞後繼續", width / 2, boxY - badgeFontSize * 0.6);
+          } else {
+            // AI turn: display at top
+            const boxY = height * 0.04;
+            ctx.fillStyle = "rgba(0,0,0,0.6)";
+            ctx.beginPath();
+            ctx.roundRect(width * 0.075, boxY, width * 0.85, boxH, 10);
+            ctx.fill();
+            let y = boxY + scriptPad + scriptFontSize;
+            ctx.textAlign = "center";
+            for (let i = 0; i < allScriptLines.length; i++) {
+              ctx.fillStyle = i < labelLines.length ? "#67e8f9" : "#e2e8f0";
+              ctx.fillText(allScriptLines[i], width / 2, y);
+              y += lineH;
+            }
+          }
+        }
+      }
+
       animFrameRef.current = requestAnimationFrame(draw);
     }
 
@@ -250,8 +341,48 @@ export default function Recorder({
 
   const { speak, stop: stopSpeech2, isSpeaking } = useSpeechSynthesis();
 
+  // Auto-advance AI script lines via TTS (with timer fallback)
+  useEffect(() => {
+    if (!scriptLines || recordingState !== "recording") return;
+    const line = scriptLines[currentScriptIndex];
+    if (!line || line.role !== "ai") return;
+    let done = false;
+    const advance = () => {
+      if (!done) {
+        done = true;
+        currentScriptIndexRef.current = currentScriptIndex + 1;
+        setCurrentScriptIndex(currentScriptIndex + 1);
+      }
+    };
+    if (voiceEnabledRef.current) {
+      speak(line.text, advance);
+    }
+    // Timer: primary when voice off, fallback when voice on (TTS may fail)
+    const timer = setTimeout(advance, voiceEnabledRef.current
+      ? Math.max(3000, line.text.length * 80)
+      : Math.max(2000, line.text.length * 60));
+    return () => {
+      done = true;
+      clearTimeout(timer);
+      stopSpeech2();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentScriptIndex, scriptLines, recordingState]);
+
   const sendToAI = useCallback(
     async (userMessage: string) => {
+      // Script mode: advance on any user speech
+      if (scriptLinesRef.current && scriptLinesRef.current.length > 0) {
+        const line = scriptLinesRef.current[currentScriptIndexRef.current];
+        if (line?.role === "user") {
+          setSubtitleLines([{ speaker: "user", text: userMessage }]);
+          // Update ref immediately so rapid callbacks read the new index
+          currentScriptIndexRef.current += 1;
+          setCurrentScriptIndex(currentScriptIndexRef.current);
+        }
+        return;
+      }
+
       if (teleprompterRef.current) {
         setSubtitleLines([{ speaker: "user", text: userMessage }]);
         return;
@@ -336,6 +467,8 @@ export default function Recorder({
     setHistory([]);
     setAiText("");
     aiTextRef.current = "";
+    setCurrentScriptIndex(0);
+    currentScriptIndexRef.current = 0;
     startRecording();
     startSpeech();
     onRecordingStart?.();
@@ -407,6 +540,11 @@ export default function Recorder({
               TELE
             </span>
           )}
+          {scriptLines && scriptLines.length > 0 && (
+            <span className="bg-purple-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+              SCRIPT {currentScriptIndex + 1}/{scriptLines.length}
+            </span>
+          )}
           {isSpeaking && (
             <span className="flex items-center gap-1.5 bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
               <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
@@ -473,6 +611,29 @@ export default function Recorder({
         >
           {voiceEnabled ? "🔊" : "🔇"}
         </button>
+        {/* Script: manual advance during user turns */}
+        {scriptLines && scriptLines.length > 0 && recordingState === "recording" &&
+          scriptLines[currentScriptIndex]?.role === "user" && (
+          <button
+            onClick={() => {
+              currentScriptIndexRef.current += 1;
+              setCurrentScriptIndex(currentScriptIndexRef.current);
+            }}
+            title="跳過此台詞，繼續下一行"
+            className="px-3 py-2.5 bg-amber-700 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-colors"
+          >
+            跳過 →
+          </button>
+        )}
+        {/* Script loader */}
+        {onScriptLoad && (
+          <ScriptLoader
+            onParsed={onScriptLoad}
+            disabled={recordingState === "recording"}
+            hasScript={!!(scriptLines && scriptLines.length > 0)}
+            onClear={onScriptClear}
+          />
+        )}
       </div>
     </div>
   );
