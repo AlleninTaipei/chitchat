@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import type { ScriptLine } from "@/types";
 import { parseTxt, parseHtml, extractCharacters } from "@/lib/scriptParser";
+import { useLocale } from "@/contexts/LocaleContext";
 
 interface ScriptLoaderProps {
   onParsed: (lines: ScriptLine[], characters: string[]) => void;
@@ -13,13 +14,14 @@ interface ScriptLoaderProps {
 
 export default function ScriptLoader({ onParsed, disabled, hasScript, onClear }: ScriptLoaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { t } = useLocale();
 
   async function handleFile(file: File) {
     const content = await file.text();
     const isHtml = file.name.endsWith(".html") || file.name.endsWith(".htm");
     const lines = isHtml ? parseHtml(content) : parseTxt(content);
     if (lines.length === 0) {
-      alert("無法解析劇本，請確認格式正確（每行需為「角色名稱: 台詞」格式）");
+      alert(t.scriptParseError);
       return;
     }
     onParsed(lines, extractCharacters(lines));
@@ -30,7 +32,7 @@ export default function ScriptLoader({ onParsed, disabled, hasScript, onClear }:
       <button
         onClick={onClear}
         disabled={disabled}
-        title="移除劇本"
+        title={t.removeScript}
         className="px-3 py-2.5 bg-purple-800 ring-1 ring-purple-400/50 text-white text-lg rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-purple-700"
       >
         📜
@@ -54,7 +56,7 @@ export default function ScriptLoader({ onParsed, disabled, hasScript, onClear }:
       <button
         onClick={() => inputRef.current?.click()}
         disabled={disabled}
-        title="上傳劇本"
+        title={t.uploadScript}
         className="px-3 py-2.5 bg-gray-700 hover:bg-gray-600 text-white text-lg rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         📜

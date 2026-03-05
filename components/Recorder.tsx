@@ -12,6 +12,7 @@ import type { AppMode, AppState, ScriptLine, SubtitleItem } from "@/types";
 import { initClock, nowMs } from "@/types";
 import { SubtitleStore } from "@/lib/subtitleStore";
 import { getSystemPrompt } from "@/lib/personas";
+import { useLocale } from "@/contexts/LocaleContext";
 
 // Default background color for conversation-only mode
 const CANVAS_BG = "#09090b";
@@ -83,6 +84,10 @@ export default function Recorder({
   const subtitleStoreRef = useRef(new SubtitleStore());
   const subtitleTimelineRef = useRef<SubtitleItem[]>([]);
   const recordingStartMsRef = useRef(0);
+
+  const { t } = useLocale();
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; }, [t]);
 
   // Script mode state
   const [currentScriptIndex, setCurrentScriptIndex] = useState(0);
@@ -291,7 +296,7 @@ export default function Recorder({
           ctx.fill();
           ctx.fillStyle = "#4ade80";
           ctx.textAlign = "center";
-          ctx.fillText("劇本排練完成！", width / 2, height * 0.4 + scriptFontSize * 2);
+          ctx.fillText(tRef.current.scriptComplete, width / 2, height * 0.4 + scriptFontSize * 2);
         } else if (scriptLine) {
           const isUserTurn = scriptLine.role === "user";
           const label = `${scriptLine.character}:`;
@@ -320,7 +325,7 @@ export default function Recorder({
             ctx.font = `bold ${badgeFontSize}px sans-serif`;
             ctx.fillStyle = "#fbbf24";
             ctx.textAlign = "center";
-            ctx.fillText("你的輪次 — 說出台詞後繼續", width / 2, boxY - badgeFontSize * 0.6);
+            ctx.fillText(tRef.current.yourTurnPrompt, width / 2, boxY - badgeFontSize * 0.6);
           } else {
             // AI turn: display at top
             const boxY = height * 0.04;
@@ -471,7 +476,7 @@ export default function Recorder({
   );
 
   const { transcript, isListening, start: startSpeech, stop: stopSpeech } =
-    useSpeechRecognition({ onTranscript: sendToAI });
+    useSpeechRecognition({ onTranscript: sendToAI, lang: t.speechLang });
 
   const { isRecording, videoBlob, startRecording, stopRecording } =
     useMediaRecorder({ canvasRef, micStream });
@@ -595,7 +600,7 @@ export default function Recorder({
             onClick={handleStart}
             className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
           >
-            開始錄影
+            {t.startRecording}
           </button>
         )}
         {recordingState === "recording" && (
@@ -603,14 +608,14 @@ export default function Recorder({
             onClick={handleStop}
             className="px-6 py-2.5 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors"
           >
-            停止錄影
+            {t.stopRecording}
           </button>
         )}
         {/* Camera toggle */}
         <button
           onClick={handleCameraToggle}
           disabled={recordingState === "recording"}
-          title={cameraEnabled ? "關閉鏡頭" : "開啟鏡頭"}
+          title={cameraEnabled ? t.cameraDisable : t.cameraEnable}
           className={`px-3 py-2.5 text-white text-lg rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
             cameraEnabled
               ? "bg-gray-700 hover:bg-gray-600"
@@ -623,7 +628,7 @@ export default function Recorder({
         <button
           onClick={() => onModeChange?.({ teleprompter: !teleprompterMode })}
           disabled={recordingState === "recording"}
-          title={teleprompterMode ? "切換到對話模式" : "切換到提詞機模式"}
+          title={teleprompterMode ? t.teleprompterDisable : t.teleprompterEnable}
           className={`px-3 py-2.5 text-white text-lg rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
             teleprompterMode ? "bg-amber-700 ring-1 ring-amber-400/50" : "bg-gray-700 hover:bg-gray-600"
           }`}
@@ -633,7 +638,7 @@ export default function Recorder({
         {/* Voice toggle */}
         <button
           onClick={() => setVoiceEnabled((v) => !v)}
-          title={voiceEnabled ? "靜音" : "開啟語音"}
+          title={voiceEnabled ? t.muteAi : t.unmuteAi}
           className="px-3 py-2.5 bg-gray-700 hover:bg-gray-600 text-white text-lg rounded-lg transition-colors"
         >
           {voiceEnabled ? "🔊" : "🔇"}
@@ -646,10 +651,9 @@ export default function Recorder({
               currentScriptIndexRef.current += 1;
               setCurrentScriptIndex(currentScriptIndexRef.current);
             }}
-            title="跳過此台詞，繼續下一行"
             className="px-3 py-2.5 bg-amber-700 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-colors"
           >
-            跳過 →
+            {t.skipLine}
           </button>
         )}
         {/* Script loader */}

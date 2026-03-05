@@ -8,6 +8,7 @@ import ApiKeyModal from "@/components/ApiKeyModal";
 import CharacterPicker from "@/components/CharacterPicker";
 import { useApiKey } from "@/hooks/useApiKey";
 import { useTimelapseExport } from "@/hooks/useTimelapseExport";
+import { useLocale } from "@/contexts/LocaleContext";
 import type { AppState, AppMode, ScriptLine, SubtitleItem } from "@/types";
 import { DEFAULT_APP_STATE } from "@/types";
 import { assignRoles } from "@/lib/scriptParser";
@@ -18,6 +19,7 @@ const Recorder = dynamic(() => import("@/components/Recorder"), { ssr: false });
 export default function Home() {
   const { apiKey, isLoading, showModal, openModal, closeModal, saveKey, isUsingUserKey } = useApiKey();
   const { exportTimelapse, status: timelapseStatus, progress: timelapseProgress, resetStatus: resetTimelapse } = useTimelapseExport();
+  const { locale, t, setLocale } = useLocale();
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [subtitleTimeline, setSubtitleTimeline] = useState<SubtitleItem[]>([]);
@@ -87,7 +89,7 @@ export default function Home() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="text-white/40 text-sm">載入中...</div>
+        <div className="text-white/40 text-sm">{t.loading}</div>
       </div>
     );
   }
@@ -136,13 +138,20 @@ export default function Home() {
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Chitchat</h1>
-          <p className="text-xs text-white/40 mt-0.5">AI 對談錄影工具</p>
+          <p className="text-xs text-white/40 mt-0.5">{t.headerSubtitle}</p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Language toggle */}
+          <button
+            onClick={() => setLocale(locale === 'zh-TW' ? 'en' : 'zh-TW')}
+            className="text-xs text-white/40 hover:text-white/70 border border-white/20 hover:border-white/40 px-2 py-1 rounded transition-colors"
+          >
+            {locale === 'zh-TW' ? 'EN' : '繁中'}
+          </button>
           {isUsingUserKey && (
             <button
               onClick={openModal}
-              title="管理 API Key"
+              title="API Key"
               className="text-white/40 hover:text-white/70 transition-colors text-lg"
             >
               ⚙️
@@ -185,41 +194,40 @@ export default function Home() {
         {/* Download section */}
         {videoBlob && (
           <div className="flex flex-col items-center gap-3 p-5 bg-white/5 border border-white/10 rounded-xl">
-            <p className="text-sm text-white/70">影片已準備好，可以下載了</p>
+            <p className="text-sm text-white/70">{t.videoReady}</p>
             <div className="flex flex-wrap justify-center gap-3">
               <button
                 onClick={downloadVideo}
                 className="px-5 py-2 bg-white text-black font-semibold rounded-lg hover:bg-white/90 transition-colors"
               >
-                下載原始影片
+                {t.downloadVideo}
               </button>
               <button
                 onClick={downloadTimelapse}
                 disabled={timelapseStatus === 'loading_ffmpeg' || timelapseStatus === 'processing'}
-                title="自動略過無語音靜默段落，產生精簡版本"
                 className="px-5 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-wait text-white font-semibold rounded-lg transition-colors"
               >
                 {timelapseStatus === 'loading_ffmpeg'
-                  ? '載入處理引擎...'
+                  ? t.timelapseLoadingEngine
                   : timelapseStatus === 'processing'
-                    ? `縮時處理中 ${timelapseProgress}%`
-                    : '縮時下載'}
+                    ? `${t.downloadTimelapse} ${timelapseProgress}%`
+                    : t.downloadTimelapse}
               </button>
               <button
                 onClick={() => { setVideoBlob(null); setRecorderKey((k) => k + 1); }}
                 className="px-5 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
               >
-                重新錄製
+                {t.reRecord}
               </button>
             </div>
             {timelapseStatus === 'nothing_to_cut' && (
-              <p className="text-xs text-amber-400/80">靜默段落不足 1 秒，無需縮時處理</p>
+              <p className="text-xs text-amber-400/80">{t.timelapseNothingToCut}</p>
             )}
             {timelapseStatus === 'error' && (
-              <p className="text-xs text-red-400/80">縮時處理失敗，請確認影片是否有效</p>
+              <p className="text-xs text-red-400/80">{t.timelapseError}</p>
             )}
             {timelapseStatus === 'done' && (
-              <p className="text-xs text-green-400/80">縮時影片已下載</p>
+              <p className="text-xs text-green-400/80">{t.timelapseDone}</p>
             )}
             {/* Preview */}
             {videoUrl && (
@@ -235,7 +243,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-white/10 px-6 py-3 text-center text-xs text-white/30">
-        使用 Web Speech API 即時語音辨識 · Claude claude-sonnet-4-6 AI 回應
+        {t.footerText}
       </footer>
     </main>
   );

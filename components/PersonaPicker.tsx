@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PERSONA_PRESETS } from "@/lib/personas";
+import { useLocale } from "@/contexts/LocaleContext";
 import type { AppState } from "@/types";
 
 interface PersonaPickerProps {
@@ -12,6 +13,7 @@ interface PersonaPickerProps {
 
 export default function PersonaPicker({ value, onChange, disabled }: PersonaPickerProps) {
   const [showCustom, setShowCustom] = useState(value.presetId === "custom");
+  const { locale, t } = useLocale();
 
   function handlePresetChange(presetId: string) {
     if (presetId === "custom") {
@@ -32,7 +34,7 @@ export default function PersonaPicker({ value, onChange, disabled }: PersonaPick
   return (
     <div className="flex flex-col gap-2 w-full">
       <div className="flex items-center gap-2">
-        <label className="text-xs text-white/50 whitespace-nowrap">AI 角色</label>
+        <label className="text-xs text-white/50 whitespace-nowrap">{t.aiRole}</label>
         <select
           value={selectValue}
           onChange={(e) => handlePresetChange(e.target.value)}
@@ -41,11 +43,11 @@ export default function PersonaPicker({ value, onChange, disabled }: PersonaPick
         >
           {PERSONA_PRESETS.map((preset) => (
             <option key={preset.id} value={preset.id} className="bg-zinc-900">
-              {preset.label}
+              {preset.labels[locale]}
             </option>
           ))}
           <option value="custom" className="bg-zinc-900">
-            自訂 Prompt
+            {t.customPromptLabel}
           </option>
         </select>
       </div>
@@ -55,7 +57,7 @@ export default function PersonaPicker({ value, onChange, disabled }: PersonaPick
           value={value.customPrompt ?? ""}
           onChange={(e) => handleCustomPromptChange(e.target.value)}
           disabled={disabled}
-          placeholder="輸入自訂 System Prompt..."
+          placeholder={t.customPromptPlaceholder}
           rows={3}
           className="w-full bg-white/5 border border-white/15 text-white text-sm rounded-lg px-3 py-2 resize-none placeholder:text-white/25 disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-white/30"
         />

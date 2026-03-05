@@ -4,6 +4,7 @@ import { useRef, useState, useCallback } from "react";
 
 interface UseSpeechRecognitionOptions {
   onTranscript: (transcript: string) => void;
+  lang?: string;
 }
 
 interface UseSpeechRecognitionReturn {
@@ -15,6 +16,7 @@ interface UseSpeechRecognitionReturn {
 
 export function useSpeechRecognition({
   onTranscript,
+  lang = 'zh-TW',
 }: UseSpeechRecognitionOptions): UseSpeechRecognitionReturn {
   const [transcript, setTranscript] = useState("");
   const [isListening, setIsListening] = useState(false);
@@ -35,7 +37,7 @@ export function useSpeechRecognition({
       const recognition = new SpeechRecognitionAPI();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = "zh-TW";
+      recognition.lang = lang;
 
       recognition.onstart = () => setIsListening(true);
 
@@ -84,7 +86,7 @@ export function useSpeechRecognition({
     const recognition = createRecognition();
     recognitionRef.current = recognition;
     recognition.start();
-  }, [onTranscript]);
+  }, [onTranscript, lang]);
 
   const stop = useCallback(() => {
     isRunningRef.current = false;

@@ -1,6 +1,8 @@
+import type { Locale } from './i18n'
+
 export interface PersonaPreset {
   id: string
-  label: string
+  labels: Record<Locale, string>
   systemPrompt: string
 }
 
@@ -10,27 +12,27 @@ const BASE_CONSTRAINT =
 export const PERSONA_PRESETS: PersonaPreset[] = [
   {
     id: 'default',
-    label: '預設助理',
+    labels: { 'zh-TW': '預設助理', en: 'Default Assistant' },
     systemPrompt:
       'You are a helpful AI assistant in a video chat conversation.' + BASE_CONSTRAINT,
   },
   {
     id: 'english-teacher',
-    label: '英語教師',
+    labels: { 'zh-TW': '英語教師', en: 'English Teacher' },
     systemPrompt:
       'You are a friendly English language teacher helping the user practice spoken English. Gently correct grammar or pronunciation errors, then respond naturally to continue the conversation.' +
       BASE_CONSTRAINT,
   },
   {
     id: 'interviewer',
-    label: '面試官',
+    labels: { 'zh-TW': '面試官', en: 'Interviewer' },
     systemPrompt:
       'You are a professional job interviewer conducting a mock interview. Ask thoughtful follow-up questions, give brief constructive feedback, and keep the conversation realistic and professional.' +
       BASE_CONSTRAINT,
   },
   {
     id: 'customer-service',
-    label: '客服人員',
+    labels: { 'zh-TW': '客服人員', en: 'Customer Service' },
     systemPrompt:
       'You are a polite and efficient customer service representative. Listen to the user\'s concern, empathise, and offer clear helpful solutions.' +
       BASE_CONSTRAINT,

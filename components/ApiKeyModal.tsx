@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useLocale } from "@/contexts/LocaleContext";
 
 interface ApiKeyModalProps {
   onSave: (key: string) => void;
@@ -12,6 +13,7 @@ export default function ApiKeyModal({ onSave, onClose, isUpdate }: ApiKeyModalPr
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const { t } = useLocale();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -20,7 +22,7 @@ export default function ApiKeyModal({ onSave, onClose, isUpdate }: ApiKeyModalPr
   function handleSave() {
     const trimmed = value.trim();
     if (!trimmed.startsWith("sk-ant-")) {
-      setError("API Key 必須以 sk-ant- 開頭");
+      setError(t.apiKeyError);
       return;
     }
     setError("");
@@ -36,12 +38,10 @@ export default function ApiKeyModal({ onSave, onClose, isUpdate }: ApiKeyModalPr
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="w-full max-w-md mx-4 bg-zinc-950 border border-white/10 rounded-2xl p-6 shadow-2xl">
         <h2 className="text-lg font-bold text-white mb-1">
-          {isUpdate ? "更新 API Key" : "設定 Anthropic API Key"}
+          {isUpdate ? t.apiKeyTitleUpdate : t.apiKeyTitle}
         </h2>
         <p className="text-sm text-white/50 mb-5">
-          {isUpdate
-            ? "輸入新的 Anthropic API Key 以取代目前儲存的金鑰。"
-            : "此應用程式需要 Anthropic API Key 才能使用 AI 功能。"}
+          {isUpdate ? t.apiKeyDescUpdate : t.apiKeyDescSet}
         </p>
 
         <input
@@ -59,8 +59,8 @@ export default function ApiKeyModal({ onSave, onClose, isUpdate }: ApiKeyModalPr
         )}
 
         <p className="text-xs text-white/30 mb-5">
-          Key 僅儲存於瀏覽器 localStorage，不會傳送至任何第三方伺服器。
-          前往{" "}
+          {t.apiKeyNote}{" "}
+          {t.apiKeyLinkPrefix}
           <a
             href="https://console.anthropic.com"
             target="_blank"
@@ -68,8 +68,8 @@ export default function ApiKeyModal({ onSave, onClose, isUpdate }: ApiKeyModalPr
             className="text-cyan-500/70 hover:text-cyan-400 underline"
           >
             console.anthropic.com
-          </a>{" "}
-          取得 API Key。
+          </a>
+          {t.apiKeyLinkSuffix}
         </p>
 
         <div className="flex gap-3 justify-end">
@@ -78,7 +78,7 @@ export default function ApiKeyModal({ onSave, onClose, isUpdate }: ApiKeyModalPr
               onClick={onClose}
               className="px-4 py-2 text-sm text-white/50 hover:text-white transition-colors rounded-lg hover:bg-white/5"
             >
-              取消
+              {t.cancel}
             </button>
           )}
           <button
@@ -86,7 +86,7 @@ export default function ApiKeyModal({ onSave, onClose, isUpdate }: ApiKeyModalPr
             disabled={!value.trim()}
             className="px-5 py-2 text-sm font-semibold bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
           >
-            儲存
+            {t.save}
           </button>
         </div>
       </div>
