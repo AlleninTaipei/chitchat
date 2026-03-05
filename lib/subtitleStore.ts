@@ -9,8 +9,8 @@ export class SubtitleStore {
   private items: SubtitleItem[] = []
   private openId: string | null = null
 
-  addUserItem(text: string, startAt: number): SubtitleItem {
-    const item: SubtitleItem = { id: nextId(), text, startAt, endAt: startAt, speaker: 'user' }
+  addUserItem(text: string, startAt: number, endAt?: number): SubtitleItem {
+    const item: SubtitleItem = { id: nextId(), text, startAt, endAt: endAt ?? startAt, speaker: 'user' }
     this.items.push(item)
     return item
   }

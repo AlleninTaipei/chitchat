@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback } from "react";
 
 interface UseSpeechSynthesisReturn {
-  speak: (text: string) => void;
+  speak: (text: string, onDone?: () => void) => void;
   stop: () => void;
   isSpeaking: boolean;
 }

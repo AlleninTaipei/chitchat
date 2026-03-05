@@ -8,7 +8,9 @@ import SubtitleOverlay, { SubtitleLine } from "./SubtitleOverlay";
 import ScriptLoader from "./ScriptLoader";
 import type { AspectRatio } from "./AspectRatioPicker";
 import type { Message } from "@/app/api/chat/route";
-import type { AppMode, AppState, ScriptLine } from "@/types";
+import type { AppMode, AppState, ScriptLine, SubtitleItem } from "@/types";
+import { initClock, nowMs } from "@/types";
+import { SubtitleStore } from "@/lib/subtitleStore";
 import { getSystemPrompt } from "@/lib/personas";
 
 // Default background color for conversation-only mode
@@ -34,7 +36,7 @@ type RecordingState = "idle" | "recording" | "stopped";
 
 interface RecorderProps {
   aspectRatio: AspectRatio;
-  onVideoReady: (blob: Blob) => void;
+  onVideoReady: (blob: Blob, subtitleTimeline: SubtitleItem[], recordingDurationMs: number) => void;
   onRecordingStart?: () => void;
   mode?: AppMode;
   onModeChange?: (patch: Partial<AppMode>) => void;
@@ -76,6 +78,11 @@ export default function Recorder({
   const voiceEnabledRef = useRef(true);
   const cameraEnabledRef = useRef(mode?.cameraEnabled ?? true);
   const teleprompterRef = useRef(mode?.teleprompter ?? false);
+
+  // Subtitle timeline tracking (for timelapse export)
+  const subtitleStoreRef = useRef(new SubtitleStore());
+  const subtitleTimelineRef = useRef<SubtitleItem[]>([]);
+  const recordingStartMsRef = useRef(0);
 
   // Script mode state
   const [currentScriptIndex, setCurrentScriptIndex] = useState(0);
@@ -371,6 +378,11 @@ export default function Recorder({
 
   const sendToAI = useCallback(
     async (userMessage: string) => {
+      // Record user speech with estimated duration for timelapse
+      const userEndAt = nowMs();
+      const userStartAt = Math.max(0, userEndAt - Math.max(1500, userMessage.length * 80));
+      subtitleStoreRef.current.addUserItem(userMessage, userStartAt, userEndAt);
+
       // Script mode: advance on any user speech
       if (scriptLinesRef.current && scriptLinesRef.current.length > 0) {
         const line = scriptLinesRef.current[currentScriptIndexRef.current];
@@ -421,6 +433,9 @@ export default function Recorder({
 
         if (!res.body) throw new Error("No response body");
 
+        // Open AI subtitle item for streaming
+        subtitleStoreRef.current.openAiItem(nowMs());
+
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let full = "";
@@ -428,10 +443,14 @@ export default function Recorder({
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          full += decoder.decode(value, { stream: true });
+          const chunk = decoder.decode(value, { stream: true });
+          full += chunk;
+          subtitleStoreRef.current.appendToOpen(chunk);
           setAiText(full);
           aiTextRef.current = full;
         }
+
+        subtitleStoreRef.current.closeOpen(nowMs());
 
         setHistory([
           ...newHistory,
@@ -443,6 +462,7 @@ export default function Recorder({
         if (voiceEnabledRef.current) speak(full);
       } catch (err) {
         console.error("AI response error:", err);
+        subtitleStoreRef.current.closeOpen(nowMs());
       } finally {
         setIsAiResponding(false);
       }
@@ -458,10 +478,16 @@ export default function Recorder({
 
   // Notify parent when video is ready
   useEffect(() => {
-    if (videoBlob) onVideoReady(videoBlob);
+    if (videoBlob) {
+      const durationMs = performance.now() - recordingStartMsRef.current;
+      onVideoReady(videoBlob, subtitleTimelineRef.current, durationMs);
+    }
   }, [videoBlob, onVideoReady]);
 
   function handleStart() {
+    initClock();
+    recordingStartMsRef.current = performance.now();
+    subtitleStoreRef.current.reset();
     setRecordingState("recording");
     setSubtitleLines([]);
     setHistory([]);
@@ -478,6 +504,7 @@ export default function Recorder({
     stopSpeech();
     stopSpeech2();
     stopRecording();
+    subtitleTimelineRef.current = subtitleStoreRef.current.getAll();
     setRecordingState("stopped");
   }
 

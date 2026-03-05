@@ -7,7 +7,8 @@ import PersonaPicker from "@/components/PersonaPicker";
 import ApiKeyModal from "@/components/ApiKeyModal";
 import CharacterPicker from "@/components/CharacterPicker";
 import { useApiKey } from "@/hooks/useApiKey";
-import type { AppState, AppMode, ScriptLine } from "@/types";
+import { useTimelapseExport } from "@/hooks/useTimelapseExport";
+import type { AppState, AppMode, ScriptLine, SubtitleItem } from "@/types";
 import { DEFAULT_APP_STATE } from "@/types";
 import { assignRoles } from "@/lib/scriptParser";
 
@@ -16,8 +17,11 @@ const Recorder = dynamic(() => import("@/components/Recorder"), { ssr: false });
 
 export default function Home() {
   const { apiKey, isLoading, showModal, openModal, closeModal, saveKey, isUsingUserKey } = useApiKey();
+  const { exportTimelapse, status: timelapseStatus, progress: timelapseProgress, resetStatus: resetTimelapse } = useTimelapseExport();
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
+  const [subtitleTimeline, setSubtitleTimeline] = useState<SubtitleItem[]>([]);
+  const [recordingDurationMs, setRecordingDurationMs] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [recorderKey, setRecorderKey] = useState(0);
   const [appState, setAppState] = useState<AppState>(DEFAULT_APP_STATE);
@@ -53,10 +57,16 @@ export default function Home() {
     setAppState((prev) => ({ ...prev, persona }));
   }, []);
 
-  const handleVideoReady = useCallback((blob: Blob) => {
-    setVideoBlob(blob);
-    setIsRecording(false);
-  }, []);
+  const handleVideoReady = useCallback(
+    (blob: Blob, timeline: SubtitleItem[], durationMs: number) => {
+      setVideoBlob(blob);
+      setSubtitleTimeline(timeline);
+      setRecordingDurationMs(durationMs);
+      setIsRecording(false);
+      resetTimelapse();
+    },
+    [resetTimelapse],
+  );
 
   const handleStartRecording = useCallback(() => {
     setVideoBlob(null);
@@ -88,6 +98,18 @@ export default function Home() {
     a.href = videoUrl;
     a.download = `chitchat-${Date.now()}.webm`;
     a.click();
+  }
+
+  async function downloadTimelapse() {
+    if (!videoBlob) return;
+    const result = await exportTimelapse(videoBlob, subtitleTimeline, recordingDurationMs);
+    if (!result) return;
+    const url = URL.createObjectURL(result);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `chitchat-timelapse-${Date.now()}.webm`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
   return (
@@ -164,12 +186,24 @@ export default function Home() {
         {videoBlob && (
           <div className="flex flex-col items-center gap-3 p-5 bg-white/5 border border-white/10 rounded-xl">
             <p className="text-sm text-white/70">影片已準備好，可以下載了</p>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap justify-center gap-3">
               <button
                 onClick={downloadVideo}
                 className="px-5 py-2 bg-white text-black font-semibold rounded-lg hover:bg-white/90 transition-colors"
               >
-                下載影片
+                下載原始影片
+              </button>
+              <button
+                onClick={downloadTimelapse}
+                disabled={timelapseStatus === 'loading_ffmpeg' || timelapseStatus === 'processing'}
+                title="自動略過無語音靜默段落，產生精簡版本"
+                className="px-5 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-wait text-white font-semibold rounded-lg transition-colors"
+              >
+                {timelapseStatus === 'loading_ffmpeg'
+                  ? '載入處理引擎...'
+                  : timelapseStatus === 'processing'
+                    ? `縮時處理中 ${timelapseProgress}%`
+                    : '縮時下載'}
               </button>
               <button
                 onClick={() => { setVideoBlob(null); setRecorderKey((k) => k + 1); }}
@@ -178,6 +212,15 @@ export default function Home() {
                 重新錄製
               </button>
             </div>
+            {timelapseStatus === 'nothing_to_cut' && (
+              <p className="text-xs text-amber-400/80">靜默段落不足 1 秒，無需縮時處理</p>
+            )}
+            {timelapseStatus === 'error' && (
+              <p className="text-xs text-red-400/80">縮時處理失敗，請確認影片是否有效</p>
+            )}
+            {timelapseStatus === 'done' && (
+              <p className="text-xs text-green-400/80">縮時影片已下載</p>
+            )}
             {/* Preview */}
             {videoUrl && (
               <video
