@@ -38,6 +38,8 @@ interface RecorderProps {
   mode?: AppMode;
   onModeChange?: (patch: Partial<AppMode>) => void;
   persona?: AppState["persona"];
+  apiKey?: string;
+  onApiKeyMissing?: () => void;
 }
 
 export default function Recorder({
@@ -47,6 +49,8 @@ export default function Recorder({
   mode,
   onModeChange,
   persona,
+  apiKey,
+  onApiKeyMissing,
 }: RecorderProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -266,15 +270,23 @@ export default function Recorder({
       setIsAiResponding(true);
 
       try {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (apiKey) headers["x-api-key"] = apiKey;
+
         const res = await fetch("/api/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             message: userMessage,
             history,
             systemPrompt: persona ? getSystemPrompt(persona) : undefined,
           }),
         });
+
+        if (res.status === 401) {
+          onApiKeyMissing?.();
+          return;
+        }
 
         if (!res.body) throw new Error("No response body");
 
@@ -304,7 +316,7 @@ export default function Recorder({
         setIsAiResponding(false);
       }
     },
-    [history, isAiResponding, speak]
+    [history, isAiResponding, speak, apiKey, onApiKeyMissing]
   );
 
   const { transcript, isListening, start: startSpeech, stop: stopSpeech } =
