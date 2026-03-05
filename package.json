@@ -1,12 +1,19 @@
 {
   "name": "chitchat",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+
+    "electron:dev": "ELECTRON_DEV=true electron .",
+
+    "build:electron": "next build && node scripts/prepare-electron.js",
+    "build:electron:win": "npm run build:electron && electron-builder --win --x64",
+    "build:electron:mac": "npm run build:electron && electron-builder --mac"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -22,9 +29,47 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "build": {
+    "appId": "com.chitchat.app",
+    "productName": "Chitchat",
+    "copyright": "Copyright © 2025",
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "nextjs",
+        "filter": ["**/*"]
+      }
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ]
+    }
   }
 }
