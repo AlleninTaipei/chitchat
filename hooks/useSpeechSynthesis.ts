@@ -18,16 +18,16 @@ export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
     setIsSpeaking(false);
   }, []);
 
-  const speak = useCallback((text: string) => {
-    if (!text.trim()) return;
+  const speak = useCallback((text: string, onDone?: () => void) => {
+    if (!text.trim()) { onDone?.(); return; }
 
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "zh-TW";
     utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+    utterance.onend = () => { setIsSpeaking(false); onDone?.(); };
+    utterance.onerror = () => { setIsSpeaking(false); onDone?.(); };
 
     utteranceRef.current = utterance;
     window.speechSynthesis.speak(utterance);

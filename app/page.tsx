@@ -3,15 +3,55 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
 import AspectRatioPicker, { AspectRatio } from "@/components/AspectRatioPicker";
+import PersonaPicker from "@/components/PersonaPicker";
+import ApiKeyModal from "@/components/ApiKeyModal";
+import CharacterPicker from "@/components/CharacterPicker";
+import { useApiKey } from "@/hooks/useApiKey";
+import type { AppState, AppMode, ScriptLine } from "@/types";
+import { DEFAULT_APP_STATE } from "@/types";
+import { assignRoles } from "@/lib/scriptParser";
 
 // Recorder uses browser APIs — disable SSR
 const Recorder = dynamic(() => import("@/components/Recorder"), { ssr: false });
 
 export default function Home() {
+  const { apiKey, isLoading, showModal, openModal, closeModal, saveKey, isUsingUserKey } = useApiKey();
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recorderKey, setRecorderKey] = useState(0);
+  const [appState, setAppState] = useState<AppState>(DEFAULT_APP_STATE);
+
+  // Script mode state
+  const [pendingScriptLines, setPendingScriptLines] = useState<ScriptLine[] | null>(null);
+  const [pendingCharacters, setPendingCharacters] = useState<string[]>([]);
+  const [scriptLines, setScriptLines] = useState<ScriptLine[] | null>(null);
+
+  const handleScriptParsed = useCallback((lines: ScriptLine[], characters: string[]) => {
+    setPendingScriptLines(lines);
+    setPendingCharacters(characters);
+  }, []);
+
+  const handleCharacterSelect = useCallback((character: string) => {
+    if (!pendingScriptLines) return;
+    setScriptLines(assignRoles(pendingScriptLines, character));
+    setPendingScriptLines(null);
+    setPendingCharacters([]);
+  }, [pendingScriptLines]);
+
+  const handleScriptClear = useCallback(() => {
+    setScriptLines(null);
+    setPendingScriptLines(null);
+    setPendingCharacters([]);
+  }, []);
+
+  const setMode = useCallback((patch: Partial<AppMode>) => {
+    setAppState((prev) => ({ ...prev, mode: { ...prev.mode, ...patch } }));
+  }, []);
+
+  const setPersona = useCallback((persona: AppState["persona"]) => {
+    setAppState((prev) => ({ ...prev, persona }));
+  }, []);
 
   const handleVideoReady = useCallback((blob: Blob) => {
     setVideoBlob(blob);
@@ -34,6 +74,14 @@ export default function Home() {
     };
   }, [videoUrl]);
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-white/40 text-sm">載入中...</div>
+      </div>
+    );
+  }
+
   function downloadVideo() {
     if (!videoUrl) return;
     const a = document.createElement("a");
@@ -44,17 +92,46 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white flex flex-col">
+      {/* Character Picker Modal */}
+      {pendingScriptLines && pendingCharacters.length > 0 && (
+        <CharacterPicker
+          characters={pendingCharacters}
+          onSelect={handleCharacterSelect}
+          onCancel={() => { setPendingScriptLines(null); setPendingCharacters([]); }}
+        />
+      )}
+
+      {/* API Key Modal */}
+      {showModal && (
+        <ApiKeyModal
+          onSave={saveKey}
+          onClose={isUsingUserKey || apiKey === "__env__" ? closeModal : undefined}
+          isUpdate={isUsingUserKey}
+        />
+      )}
+
       {/* Header */}
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Chitchat</h1>
           <p className="text-xs text-white/40 mt-0.5">AI 對談錄影工具</p>
         </div>
-        <AspectRatioPicker
-          value={aspectRatio}
-          onChange={setAspectRatio}
-          disabled={isRecording}
-        />
+        <div className="flex items-center gap-3">
+          {isUsingUserKey && (
+            <button
+              onClick={openModal}
+              title="管理 API Key"
+              className="text-white/40 hover:text-white/70 transition-colors text-lg"
+            >
+              ⚙️
+            </button>
+          )}
+          <AspectRatioPicker
+            value={aspectRatio}
+            onChange={setAspectRatio}
+            disabled={isRecording}
+          />
+        </div>
       </header>
 
       {/* Main content */}
@@ -64,7 +141,24 @@ export default function Home() {
           aspectRatio={aspectRatio}
           onVideoReady={handleVideoReady}
           onRecordingStart={handleStartRecording}
+          mode={appState.mode}
+          onModeChange={setMode}
+          persona={appState.persona}
+          apiKey={isUsingUserKey && typeof apiKey === "string" ? apiKey : undefined}
+          onApiKeyMissing={openModal}
+          scriptLines={scriptLines ?? undefined}
+          onScriptLoad={handleScriptParsed}
+          onScriptClear={handleScriptClear}
         />
+
+        {/* Persona picker */}
+        <div className="w-full max-w-sm">
+          <PersonaPicker
+            value={appState.persona}
+            onChange={setPersona}
+            disabled={isRecording}
+          />
+        </div>
 
         {/* Download section */}
         {videoBlob && (

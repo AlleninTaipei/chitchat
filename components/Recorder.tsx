@@ -5,8 +5,14 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis";
 import { useMediaRecorder } from "@/hooks/useMediaRecorder";
 import SubtitleOverlay, { SubtitleLine } from "./SubtitleOverlay";
+import ScriptLoader from "./ScriptLoader";
 import type { AspectRatio } from "./AspectRatioPicker";
 import type { Message } from "@/app/api/chat/route";
+import type { AppMode, AppState, ScriptLine } from "@/types";
+import { getSystemPrompt } from "@/lib/personas";
+
+// Default background color for conversation-only mode
+const CANVAS_BG = "#09090b";
 
 interface CanvasDimensions {
   width: number;
@@ -30,9 +36,29 @@ interface RecorderProps {
   aspectRatio: AspectRatio;
   onVideoReady: (blob: Blob) => void;
   onRecordingStart?: () => void;
+  mode?: AppMode;
+  onModeChange?: (patch: Partial<AppMode>) => void;
+  persona?: AppState["persona"];
+  apiKey?: string;
+  onApiKeyMissing?: () => void;
+  scriptLines?: ScriptLine[];
+  onScriptLoad?: (lines: ScriptLine[], characters: string[]) => void;
+  onScriptClear?: () => void;
 }
 
-export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }: RecorderProps) {
+export default function Recorder({
+  aspectRatio,
+  onVideoReady,
+  onRecordingStart,
+  mode,
+  onModeChange,
+  persona,
+  apiKey,
+  onApiKeyMissing,
+  scriptLines,
+  onScriptLoad,
+  onScriptClear,
+}: RecorderProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const animFrameRef = useRef<number>(0);
@@ -48,6 +74,16 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
   const aiTextRef = useRef("");
   const subtitleLinesRef = useRef<SubtitleLine[]>([]);
   const voiceEnabledRef = useRef(true);
+  const cameraEnabledRef = useRef(mode?.cameraEnabled ?? true);
+  const teleprompterRef = useRef(mode?.teleprompter ?? false);
+
+  // Script mode state
+  const [currentScriptIndex, setCurrentScriptIndex] = useState(0);
+  const currentScriptIndexRef = useRef(0);
+  const scriptLinesRef = useRef<ScriptLine[] | undefined>(scriptLines);
+
+  useEffect(() => { scriptLinesRef.current = scriptLines; }, [scriptLines]);
+  useEffect(() => { currentScriptIndexRef.current = currentScriptIndex; }, [currentScriptIndex]);
 
   const dims = getDimensions(aspectRatio);
 
@@ -64,7 +100,15 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
     subtitleLinesRef.current = subtitleLines;
   }, [subtitleLines]);
 
-  // Camera setup
+  useEffect(() => {
+    cameraEnabledRef.current = mode?.cameraEnabled ?? true;
+  }, [mode?.cameraEnabled]);
+
+  useEffect(() => {
+    teleprompterRef.current = mode?.teleprompter ?? false;
+  }, [mode?.teleprompter]);
+
+  // Camera setup — always try video+audio; gracefully fall back to audio-only
   useEffect(() => {
     let cancelled = false;
     async function setup() {
@@ -87,8 +131,18 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
           videoRef.current.srcObject = new MediaStream(stream.getVideoTracks());
           await videoRef.current.play();
         }
-      } catch (err) {
-        console.error("Camera/mic access error:", err);
+      } catch {
+        // Camera not available — try audio only
+        try {
+          const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
+          if (!cancelled) {
+            setMicStream(audioOnly);
+            // Notify parent that camera is unavailable
+            onModeChange?.({ cameraEnabled: false });
+          }
+        } catch (err) {
+          console.error("Mic access error:", err);
+        }
       }
     }
     setup();
@@ -96,6 +150,7 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
       cancelled = true;
       cameraStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Canvas draw loop
@@ -135,24 +190,30 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
       canvas.width = width;
       canvas.height = height;
 
-      // Draw camera feed (cover fill)
-      const vAspect = video.videoWidth / (video.videoHeight || 1);
-      const cAspect = width / height;
-      let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight;
+      if (cameraEnabledRef.current && video.readyState >= 2) {
+        // Draw camera feed (cover fill, mirrored)
+        const vAspect = video.videoWidth / (video.videoHeight || 1);
+        const cAspect = width / height;
+        let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight;
 
-      if (vAspect > cAspect) {
-        sw = video.videoHeight * cAspect;
-        sx = (video.videoWidth - sw) / 2;
+        if (vAspect > cAspect) {
+          sw = video.videoHeight * cAspect;
+          sx = (video.videoWidth - sw) / 2;
+        } else {
+          sh = video.videoWidth / cAspect;
+          sy = (video.videoHeight - sh) / 2;
+        }
+
+        ctx.save();
+        ctx.translate(width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
+        ctx.restore();
       } else {
-        sh = video.videoWidth / cAspect;
-        sy = (video.videoHeight - sh) / 2;
+        // Conversation-only mode: solid background
+        ctx.fillStyle = CANVAS_BG;
+        ctx.fillRect(0, 0, width, height);
       }
-
-      ctx.save();
-      ctx.translate(width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
-      ctx.restore();
 
       // Subtitles
       const lines = subtitleLinesRef.current.slice(-3);
@@ -170,10 +231,9 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
         const padding = fontSize * 0.6;
         const maxW = width * 0.85;
 
-        // Calculate total height
         const wrappedGroups = allLines.map((line) => ({
           ...line,
-          wrapped: wrapText(ctx, `${line.speaker === "user" ? "👤" : "🤖"} ${line.text}`, maxW),
+          wrapped: wrapText(ctx, `${line.speaker === "user" ? "😊" : "💡"} ${line.text}`, maxW),
         }));
 
         const totalRows = wrappedGroups.reduce((sum, g) => sum + g.wrapped.length, 0);
@@ -196,6 +256,82 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
         }
       }
 
+      // Script mode overlay
+      const sLines = scriptLinesRef.current;
+      if (sLines && sLines.length > 0) {
+        const idx = currentScriptIndexRef.current;
+        const scriptDone = idx >= sLines.length;
+        const scriptLine = sLines[idx];
+
+        // Progress indicator (top-right)
+        const progFontSize = Math.round(width * 0.022);
+        ctx.font = `${progFontSize}px sans-serif`;
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.textAlign = "right";
+        const progText = scriptDone ? "完" : `${idx + 1} / ${sLines.length}`;
+        ctx.fillText(progText, width - width * 0.03, height * 0.05);
+
+        const scriptFontSize = Math.round(width * 0.032);
+        const scriptPad = scriptFontSize * 0.7;
+        const scriptMaxW = width * 0.85;
+        ctx.font = `bold ${scriptFontSize}px sans-serif`;
+
+        if (scriptDone) {
+          // Completion message at centre
+          ctx.fillStyle = "rgba(0,0,0,0.65)";
+          ctx.beginPath();
+          ctx.roundRect(width * 0.1, height * 0.4, width * 0.8, scriptFontSize * 3, 10);
+          ctx.fill();
+          ctx.fillStyle = "#4ade80";
+          ctx.textAlign = "center";
+          ctx.fillText("劇本排練完成！", width / 2, height * 0.4 + scriptFontSize * 2);
+        } else if (scriptLine) {
+          const isUserTurn = scriptLine.role === "user";
+          const label = `${scriptLine.character}:`;
+          const labelLines = wrapText(ctx, label, scriptMaxW);
+          const textLines = wrapText(ctx, scriptLine.text, scriptMaxW);
+          const allScriptLines = [...labelLines, ...textLines];
+          const lineH = scriptFontSize * 1.4;
+          const boxH = allScriptLines.length * lineH + scriptPad * 2;
+
+          if (isUserTurn) {
+            // User turn: prompt at the bottom (above subtitle area)
+            const boxY = height - boxH - height * 0.18;
+            ctx.fillStyle = "rgba(0,0,0,0.6)";
+            ctx.beginPath();
+            ctx.roundRect(width * 0.075, boxY, width * 0.85, boxH, 10);
+            ctx.fill();
+            let y = boxY + scriptPad + scriptFontSize;
+            ctx.textAlign = "center";
+            for (let i = 0; i < allScriptLines.length; i++) {
+              ctx.fillStyle = i < labelLines.length ? "#fbbf24" : "#ffffff";
+              ctx.fillText(allScriptLines[i], width / 2, y);
+              y += lineH;
+            }
+            // "你的輪次" badge
+            const badgeFontSize = Math.round(width * 0.02);
+            ctx.font = `bold ${badgeFontSize}px sans-serif`;
+            ctx.fillStyle = "#fbbf24";
+            ctx.textAlign = "center";
+            ctx.fillText("你的輪次 — 說出台詞後繼續", width / 2, boxY - badgeFontSize * 0.6);
+          } else {
+            // AI turn: display at top
+            const boxY = height * 0.04;
+            ctx.fillStyle = "rgba(0,0,0,0.6)";
+            ctx.beginPath();
+            ctx.roundRect(width * 0.075, boxY, width * 0.85, boxH, 10);
+            ctx.fill();
+            let y = boxY + scriptPad + scriptFontSize;
+            ctx.textAlign = "center";
+            for (let i = 0; i < allScriptLines.length; i++) {
+              ctx.fillStyle = i < labelLines.length ? "#67e8f9" : "#e2e8f0";
+              ctx.fillText(allScriptLines[i], width / 2, y);
+              y += lineH;
+            }
+          }
+        }
+      }
+
       animFrameRef.current = requestAnimationFrame(draw);
     }
 
@@ -205,8 +341,53 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
 
   const { speak, stop: stopSpeech2, isSpeaking } = useSpeechSynthesis();
 
+  // Auto-advance AI script lines via TTS (with timer fallback)
+  useEffect(() => {
+    if (!scriptLines || recordingState !== "recording") return;
+    const line = scriptLines[currentScriptIndex];
+    if (!line || line.role !== "ai") return;
+    let done = false;
+    const advance = () => {
+      if (!done) {
+        done = true;
+        currentScriptIndexRef.current = currentScriptIndex + 1;
+        setCurrentScriptIndex(currentScriptIndex + 1);
+      }
+    };
+    if (voiceEnabledRef.current) {
+      speak(line.text, advance);
+    }
+    // Timer: primary when voice off, fallback when voice on (TTS may fail)
+    const timer = setTimeout(advance, voiceEnabledRef.current
+      ? Math.max(3000, line.text.length * 80)
+      : Math.max(2000, line.text.length * 60));
+    return () => {
+      done = true;
+      clearTimeout(timer);
+      stopSpeech2();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentScriptIndex, scriptLines, recordingState]);
+
   const sendToAI = useCallback(
     async (userMessage: string) => {
+      // Script mode: advance on any user speech
+      if (scriptLinesRef.current && scriptLinesRef.current.length > 0) {
+        const line = scriptLinesRef.current[currentScriptIndexRef.current];
+        if (line?.role === "user") {
+          setSubtitleLines([{ speaker: "user", text: userMessage }]);
+          // Update ref immediately so rapid callbacks read the new index
+          currentScriptIndexRef.current += 1;
+          setCurrentScriptIndex(currentScriptIndexRef.current);
+        }
+        return;
+      }
+
+      if (teleprompterRef.current) {
+        setSubtitleLines([{ speaker: "user", text: userMessage }]);
+        return;
+      }
+
       if (isAiResponding) return;
 
       const newHistory: Message[] = [
@@ -214,20 +395,29 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
         { role: "user", content: userMessage },
       ];
       setHistory(newHistory);
-      setSubtitleLines((prev) => [
-        ...prev,
-        { speaker: "user", text: userMessage },
-      ]);
+      setSubtitleLines([{ speaker: "user", text: userMessage }]);
       setAiText("");
       aiTextRef.current = "";
       setIsAiResponding(true);
 
       try {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (apiKey) headers["x-api-key"] = apiKey;
+
         const res = await fetch("/api/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: userMessage, history }),
+          headers,
+          body: JSON.stringify({
+            message: userMessage,
+            history,
+            systemPrompt: persona ? getSystemPrompt(persona) : undefined,
+          }),
         });
+
+        if (res.status === 401) {
+          onApiKeyMissing?.();
+          return;
+        }
 
         if (!res.body) throw new Error("No response body");
 
@@ -247,10 +437,7 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
           ...newHistory,
           { role: "assistant", content: full },
         ]);
-        setSubtitleLines((prev) => [
-          ...prev,
-          { speaker: "ai", text: full },
-        ]);
+        setSubtitleLines([{ speaker: "ai", text: full }]);
         setAiText("");
         aiTextRef.current = "";
         if (voiceEnabledRef.current) speak(full);
@@ -260,7 +447,7 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
         setIsAiResponding(false);
       }
     },
-    [history, isAiResponding, speak]
+    [history, isAiResponding, speak, apiKey, onApiKeyMissing]
   );
 
   const { transcript, isListening, start: startSpeech, stop: stopSpeech } =
@@ -280,6 +467,8 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
     setHistory([]);
     setAiText("");
     aiTextRef.current = "";
+    setCurrentScriptIndex(0);
+    currentScriptIndexRef.current = 0;
     startRecording();
     startSpeech();
     onRecordingStart?.();
@@ -292,6 +481,10 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
     setRecordingState("stopped");
   }
 
+  function handleCameraToggle() {
+    onModeChange?.({ cameraEnabled: !(mode?.cameraEnabled ?? true) });
+  }
+
   // Container style for aspect ratio
   const containerStyle: React.CSSProperties =
     aspectRatio === "9:16"
@@ -299,6 +492,9 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
       : aspectRatio === "1:1"
         ? { maxWidth: "min(540px, 60vw)", width: "100%" }
         : { maxWidth: "min(854px, 90vw)", width: "100%" };
+
+  const cameraEnabled = mode?.cameraEnabled ?? true;
+  const teleprompterMode = mode?.teleprompter ?? false;
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -339,6 +535,16 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
               AI...
             </span>
           )}
+          {teleprompterMode && (
+            <span className="bg-amber-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+              TELE
+            </span>
+          )}
+          {scriptLines && scriptLines.length > 0 && (
+            <span className="bg-purple-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+              SCRIPT {currentScriptIndex + 1}/{scriptLines.length}
+            </span>
+          )}
           {isSpeaking && (
             <span className="flex items-center gap-1.5 bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
               <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
@@ -346,6 +552,13 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
             </span>
           )}
         </div>
+
+        {/* Camera-off indicator */}
+        {!cameraEnabled && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="text-white/20 text-4xl select-none">&#128247;&#824;</span>
+          </div>
+        )}
       </div>
 
       {/* Controls */}
@@ -366,6 +579,31 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
             停止錄影
           </button>
         )}
+        {/* Camera toggle */}
+        <button
+          onClick={handleCameraToggle}
+          disabled={recordingState === "recording"}
+          title={cameraEnabled ? "關閉鏡頭" : "開啟鏡頭"}
+          className={`px-3 py-2.5 text-white text-lg rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            cameraEnabled
+              ? "bg-gray-700 hover:bg-gray-600"
+              : "bg-gray-900 ring-1 ring-white/30 hover:bg-gray-800"
+          }`}
+        >
+          {cameraEnabled ? "📷" : "🚫"}
+        </button>
+        {/* Teleprompter toggle */}
+        <button
+          onClick={() => onModeChange?.({ teleprompter: !teleprompterMode })}
+          disabled={recordingState === "recording"}
+          title={teleprompterMode ? "切換到對話模式" : "切換到提詞機模式"}
+          className={`px-3 py-2.5 text-white text-lg rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            teleprompterMode ? "bg-amber-700 ring-1 ring-amber-400/50" : "bg-gray-700 hover:bg-gray-600"
+          }`}
+        >
+          {teleprompterMode ? "📺" : "💬"}
+        </button>
+        {/* Voice toggle */}
         <button
           onClick={() => setVoiceEnabled((v) => !v)}
           title={voiceEnabled ? "靜音" : "開啟語音"}
@@ -373,6 +611,29 @@ export default function Recorder({ aspectRatio, onVideoReady, onRecordingStart }
         >
           {voiceEnabled ? "🔊" : "🔇"}
         </button>
+        {/* Script: manual advance during user turns */}
+        {scriptLines && scriptLines.length > 0 && recordingState === "recording" &&
+          scriptLines[currentScriptIndex]?.role === "user" && (
+          <button
+            onClick={() => {
+              currentScriptIndexRef.current += 1;
+              setCurrentScriptIndex(currentScriptIndexRef.current);
+            }}
+            title="跳過此台詞，繼續下一行"
+            className="px-3 py-2.5 bg-amber-700 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-colors"
+          >
+            跳過 →
+          </button>
+        )}
+        {/* Script loader */}
+        {onScriptLoad && (
+          <ScriptLoader
+            onParsed={onScriptLoad}
+            disabled={recordingState === "recording"}
+            hasScript={!!(scriptLines && scriptLines.length > 0)}
+            onClear={onScriptClear}
+          />
+        )}
       </div>
     </div>
   );
