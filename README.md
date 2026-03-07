@@ -1,36 +1,169 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Chitchat
 
-## Getting Started
+> Talk to an AI on camera. The subtitles burn into your recording — live, frame by frame, no post-processing.
 
-First, run the development server:
+Chitchat is an AI-powered video recording tool built entirely in the browser. You speak; your voice is transcribed in real-time; Claude responds; the response appears as subtitles — all permanently composited into a canvas recording that you can download the moment you stop.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+No FFmpeg. No waiting. No subtitle files to manage. Just press record, have a conversation, and walk away with a finished `.webm` video.
+
+---
+
+## What makes it different
+
+Most "AI + camera" demos fall into one of two traps:
+
+- **Post-processing**: record first, transcribe later, burn subtitles with FFmpeg. Long pipeline, lots of waiting.
+- **Overlay trick**: put a `<div>` on top of `<video>`. Easy to build, but the subtitles disappear the moment you export.
+
+Chitchat takes a third path: **the canvas is the studio**. Camera feed and AI subtitles are composited onto a single `<canvas>` element in real-time. That canvas is what gets recorded. When you stop, the subtitles are already baked into every frame.
+
+```
+Camera → <canvas> (camera + subtitles composited live) → MediaRecorder → .webm
+                                                ↑
+Mic → SpeechRecognition → /api/chat → Claude → streaming text chunks
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Built with vibe coding
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This project was built with AI assistance from the ground up — a real-world example of what's possible when you treat Claude as a co-engineer rather than a search engine.
 
-## Learn More
+If you're new to AI-assisted development, this codebase is worth exploring. Every architectural decision has a reason, and those reasons are documented. You'll find:
 
-To learn more about Next.js, take a look at the following resources:
+- Why `useRef` beats `useState` inside animation loops
+- How to compose a `MediaStream` like an audio mixing board
+- Why a state machine is worth the extra setup
+- How to stream raw text from a server route instead of wrestling with SSE
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Read [`LEARN-TW.md`](./LEARN-TW.md) for a plain-language walkthrough of every non-obvious decision in the code.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Features
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Feature | Status |
+|---------|--------|
+| Live voice-to-AI conversation | Shipped |
+| Subtitles burned into canvas recording | Shipped |
+| AI persona presets (teacher, interviewer, support) | Shipped |
+| Custom system prompt | Shipped |
+| BYOK — bring your own Anthropic API key | Shipped |
+| Script mode (rehearse from a script with AI coaching) | Shipped |
+| 16:9 / 9:16 / 1:1 aspect ratio | Shipped |
+| Smart timelapse export | Planned |
+| TTS audio recording (AI voice burned into video) | Planned |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Quickstart
+
+**1. Clone and install**
+```bash
+git clone <this-repo>
+cd chitchat
+npm install
+```
+
+**2. Add your API key**
+```bash
+# Create .env.local in the project root
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env.local
+```
+
+Get your key at [console.anthropic.com](https://console.anthropic.com). The key lives only on the server — it never reaches the browser.
+
+> No API key yet? The app will guide you through entering one at startup.
+
+**3. Run**
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) in Chrome or Edge. Allow camera and microphone access. Press record, start talking.
+
+---
+
+## How it works
+
+Three things happen in parallel the moment you press record:
+
+**Camera lane** — `getUserMedia` captures your camera and mic. The video track feeds a hidden `<video>` element that the canvas reads from. The audio track is held separately for the recorder.
+
+**AI lane** — `SpeechRecognition` listens for your voice. When you pause, the transcript is sent to `/api/chat`, which streams Claude's response back as plain UTF-8 text. Each chunk is appended to a ref that the canvas reads on every frame.
+
+**Canvas lane** — A `requestAnimationFrame` loop runs continuously. Each frame: draw the mirrored camera feed, draw the subtitle overlay from the latest AI text. `canvas.captureStream(30)` + the mic audio track → `MediaRecorder` → `.webm` blob.
+
+The canvas is both the preview and the recorder. What you see is exactly what gets saved.
+
+---
+
+## Project structure
+
+```
+src/
+  app/
+    page.tsx              # Root — aspect ratio state, dynamic import
+    api/chat/route.ts     # Claude streaming endpoint (server-side only)
+  components/
+    VideoRecorder.tsx     # Main orchestrator with conversation state machine
+    ConversationOverlay.tsx  # Canvas render loop (camera + subtitle compositing)
+  hooks/
+    useVoiceRecognition.ts
+    useTextToSpeech.ts
+    useCanvasRecorder.ts
+    useAudioMixer.ts
+    useConversation.ts
+  lib/
+    conversationMachine.ts  # Pure reducer state machine
+    subtitleStore.ts         # Timestamped subtitle tracking
+  types/
+    index.ts                # AppState, SubtitleItem, ConversationState
+```
+
+---
+
+## Commands
+
+```bash
+npm run dev      # Dev server at localhost:3000
+npm run build    # Production build
+npm run lint     # ESLint
+```
+
+---
+
+## Browser support
+
+| Browser | Support |
+|---------|---------|
+| Chrome / Edge | Full support |
+| Firefox | Recording works; SpeechRecognition limited |
+| Safari / iOS | Unreliable SpeechRecognition — not recommended |
+
+Output format is `.webm` (VP9 + Opus). Chrome and Firefox play it natively.
+
+---
+
+## For vibe coders
+
+You don't need to understand every line to get value from this project. Pick one thing that interests you and dig into it:
+
+- Curious about the canvas recording trick? Start with `ConversationOverlay.tsx`.
+- Want to understand the AI streaming? Read `app/api/chat/route.ts` — it's about 30 lines.
+- Interested in state machines? Open `lib/conversationMachine.ts` and read the reducer.
+- Confused about why refs are used instead of state? See section 4a in `LEARN-TW.md`.
+
+The codebase was designed to be readable. Every non-obvious choice has a comment or a doc entry explaining the tradeoff.
+
+---
+
+## Going further
+
+The `idea.md` file contains a full architecture design for future phases — AI engine abstraction, audio mixer bus for TTS recording, smart timelapse export, script mode with turn management. It's also a good read if you want to see how experienced engineers think about expanding a system without breaking what already works.
+
+---
+
+## License
+
+MIT
