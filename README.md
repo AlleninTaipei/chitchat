@@ -163,24 +163,32 @@ The canvas is both the preview and the recorder. What you see is exactly what ge
 ## Project structure
 
 ```
-src/
-  app/
-    page.tsx              # Root — aspect ratio state, dynamic import
-    api/chat/route.ts     # Claude streaming endpoint (server-side only)
-  components/
-    VideoRecorder.tsx     # Main orchestrator with conversation state machine
-    ConversationOverlay.tsx  # Canvas render loop (camera + subtitle compositing)
-  hooks/
-    useVoiceRecognition.ts
-    useTextToSpeech.ts
-    useCanvasRecorder.ts
-    useAudioMixer.ts
-    useConversation.ts
-  lib/
-    conversationMachine.ts  # Pure reducer state machine
-    subtitleStore.ts         # Timestamped subtitle tracking
-  types/
-    index.ts                # AppState, SubtitleItem, ConversationState
+app/
+  page.tsx                    # Root — aspect ratio, mode state, dynamic import
+  api/chat/route.ts           # Claude streaming endpoint (server-side only)
+  api/check-key/route.ts      # Server-side API key presence check
+components/
+  Recorder.tsx                # Core engine — camera, canvas, speech, AI, recording
+  SubtitleOverlay.tsx         # UI-only subtitle overlay (not burned into recording)
+  AspectRatioPicker.tsx       # 16:9 / 9:16 / 1:1 selector
+  PersonaPicker.tsx           # AI persona preset selector
+  ApiKeyModal.tsx             # BYOK key entry / update modal
+  ScriptLoader.tsx            # Script file parser and loader
+  CharacterPicker.tsx         # Script character selector dialog
+hooks/
+  useSpeechRecognition.ts     # Web Speech API wrapper
+  useSpeechSynthesis.ts       # TTS for AI responses
+  useMediaRecorder.ts         # canvas.captureStream + mic → MediaRecorder → Blob
+  useApiKey.ts                # API key state management (localStorage + server check)
+  useConversationMachine.ts   # React hook for conversation state machine
+lib/
+  conversationMachine.ts      # Pure reducer state machine
+  subtitleStore.ts            # Timestamped subtitle tracking
+  personas.ts                 # Persona presets and system prompt builder
+  scriptParser.ts             # .txt / .html script file parser
+  claude.ts                   # Client-side streamChat helper
+types/
+  index.ts                    # AppState, AppMode, SubtitleItem, ConversationState
 ```
 
 ---

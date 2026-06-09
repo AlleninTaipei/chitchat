@@ -88,7 +88,7 @@ useEffect(() => {
 
 The draw loop reads `aiTextRef.current` — a ref, not state. Refs are mutable objects; the loop always reads the latest value through the same reference. State drives React re-renders and UI; refs are the escape hatch for code that lives outside React's render cycle.
 
-**Where to find it:** `Recorder.tsx` lines 51–68 (refs + sync effects), lines 161–162 (read in draw loop).
+**Where to find it:** `Recorder.tsx` lines 62–109 (refs + sync effects), line 220 (read in draw loop).
 
 ---
 
@@ -228,7 +228,7 @@ function wrapText(ctx, text, maxWidth): string[] {
 
 User lines are white (`#ffffff`); AI lines are cyan (`#67e8f9`) — a quick visual cue for who's speaking.
 
-**Where to find it:** `Recorder.tsx` lines 113–200.
+**Where to find it:** `Recorder.tsx` lines 165–184 (`wrapText`), lines 207–211 (mirror trick), lines 218–257 (subtitle rendering).
 
 ---
 
@@ -353,14 +353,23 @@ The `SubtitleStore` class is similarly forward-looking: the canvas draw loop tod
 |------|-------------|
 | `app/page.tsx` | Main page shell — owns aspect ratio state, renders Recorder dynamically |
 | `app/api/chat/route.ts` | Claude streaming proxy — receives messages, returns plain text stream |
+| `app/api/check-key/route.ts` | Checks if `ANTHROPIC_API_KEY` is set server-side; drives BYOK prompt flow |
 | `components/Recorder.tsx` | Core engine — camera, canvas draw loop, speech, AI, recording state |
 | `components/SubtitleOverlay.tsx` | UI-only subtitle overlay on top of canvas (not recorded) |
 | `components/AspectRatioPicker.tsx` | 16:9 / 9:16 / 1:1 selector |
+| `components/PersonaPicker.tsx` | Selector for AI persona presets (teacher, interviewer, support…) |
+| `components/ApiKeyModal.tsx` | Modal for entering / updating a BYOK Anthropic API key |
+| `components/ScriptLoader.tsx` | File-upload button that parses .txt / .html scripts into `ScriptLine[]` |
+| `components/CharacterPicker.tsx` | Dialog for choosing which script character the user is playing |
 | `hooks/useSpeechRecognition.ts` | Wraps Web Speech API, fires `onTranscript` on final results |
 | `hooks/useMediaRecorder.ts` | canvas.captureStream + mic → MediaRecorder → Blob |
 | `hooks/useSpeechSynthesis.ts` | Text-to-speech for AI responses |
+| `hooks/useApiKey.ts` | Manages API key state (localStorage + server check), exposes `showModal` flag |
+| `hooks/useConversationMachine.ts` | React hook wrapping the conversation state machine reducer |
 | `lib/conversationMachine.ts` | Pure reducer for conversation state machine |
 | `lib/subtitleStore.ts` | Tracks subtitle items with timing, ready for Phase 2 |
+| `lib/personas.ts` | `PERSONA_PRESETS` definitions and `getSystemPrompt()` helper |
+| `lib/scriptParser.ts` | Parses .txt and .html script files into `ScriptLine[]` arrays |
 | `lib/claude.ts` | Client-side streamChat helper (available for future direct use) |
 | `types/index.ts` | Master type definitions — SubtitleItem, AppMode, AppState, ConversationState |
 
