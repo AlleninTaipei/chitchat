@@ -64,7 +64,7 @@ Deliberately manage what the AI can see at the start of every session. Don't rel
 
 **Why it works:** An AI without context makes assumptions. Those assumptions are often wrong in ways that are invisible until late in the session. Explicit context files eliminate whole categories of misunderstanding before they happen.
 
-**In this repo:** `CLAUDE.md` defines architecture constraints and commands. `LEARN-TW.md` documents every non-obvious design decision. `.env.local` conventions are specified. The AI arrives at each session already knowing the rules.
+**In this repo:** `CLAUDE.md` defines architecture constraints and commands. `LEARN.md` documents every non-obvious design decision. `.env.local` conventions are specified. The AI arrives at each session already knowing the rules.
 
 ---
 
@@ -99,7 +99,7 @@ If you're new to AI-assisted development, this codebase is worth exploring. Ever
 - Why a state machine is worth the extra setup
 - How to stream raw text from a server route instead of wrestling with SSE
 
-Read [`LEARN-TW.md`](./LEARN-TW.md) for a plain-language walkthrough of every non-obvious decision in the code.
+Read [`LEARN.md`](./LEARN.md) for a plain-language walkthrough of every non-obvious decision in the code.
 
 ---
 
@@ -215,7 +215,7 @@ You don't need to understand every line to get value from this project. Pick one
 - Curious about the canvas recording trick? Start with `ConversationOverlay.tsx`.
 - Want to understand the AI streaming? Read `app/api/chat/route.ts` — it's about 30 lines.
 - Interested in state machines? Open `lib/conversationMachine.ts` and read the reducer.
-- Confused about why refs are used instead of state? See section 4a in `LEARN-TW.md`.
+- Confused about why refs are used instead of state? See section 4a in `LEARN.md`.
 
 The codebase was designed to be readable. Every non-obvious choice has a comment or a doc entry explaining the tradeoff.
 
