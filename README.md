@@ -25,17 +25,17 @@ Mic → SpeechRecognition → /api/chat → Claude → streaming text chunks
 
 ---
 
-## Spec-first agentic development
+## Agentic coding workflows
 
-This project was built using a **spec-first agentic workflow** — one of the most effective patterns in modern AI-assisted engineering.
+This project was built end-to-end using AI assistance, and it deliberately demonstrates five agentic coding patterns that are repeatable and teachable. Each one addresses a different phase of the development lifecycle.
 
-The idea: before writing a single line of code, you sit down with the AI and co-author a complete Product Requirements Document (PRD). You describe the problem, debate tradeoffs, clarify scope, and let the AI push back on assumptions — all in natural language. By the time you're done, the PRD is a precise, shared mental model of what you're building and why. Only then do you ask the AI to start implementing.
+---
 
-**Why this works:**
+### 1. Spec-first (PRD-driven development)
 
-- Ambiguity compounds in code but dissolves in conversation. Catching a scope error in a document costs seconds; catching it after three days of implementation costs days.
-- A well-constructed PRD gives the AI stable context across long sessions — it doesn't need to re-derive intent from fragmented code comments.
-- The spec becomes a contract: every implementation decision can be evaluated against "does this match the PRD?" rather than "does this feel right?"
+Before writing a single line of code, co-author a complete Product Requirements Document (PRD) with the AI. Describe the problem, debate tradeoffs, clarify scope, and let the AI push back on assumptions — all in natural language. The PRD becomes a precise, shared mental model of what you're building and why.
+
+**Why it works:** Ambiguity compounds in code but dissolves in conversation. A scope error caught in a document costs seconds; the same error caught after three days of implementation costs days. The PRD also gives the AI stable context across long sessions — it doesn't need to re-derive intent from fragmented code comments.
 
 **Artifacts from this build:**
 
@@ -44,7 +44,47 @@ The idea: before writing a single line of code, you sit down with the AI and co-
 | [`AI_Video_PRD.docx`](./AI_Video_PRD.docx) | Original PRD (Traditional Chinese) — co-authored with Claude before any code was written |
 | [`AI_Video_PRD_EN.docx`](./AI_Video_PRD_EN.docx) | English translation for international reference |
 
-These documents are intentionally preserved as artifacts of the design process — not polished marketing copy, but the actual thinking that preceded the build. If you're using this project as a teaching resource, reading the PRD first and then tracing how each requirement manifested in the code is one of the most instructive exercises you can do.
+If you're using this project as a teaching resource, read the PRD first and then trace how each requirement manifested in the code — that mapping exercise is more instructive than reading the code alone.
+
+---
+
+### 2. Atomic tasking (incremental delegation)
+
+Break the PRD into the smallest independently verifiable units, then delegate one at a time. Never hand the AI a vague instruction like "build the app" — hand it a scoped task with a clear acceptance criterion.
+
+**Why it works:** The smaller the task, the easier it is to verify correctness and the less damage a misunderstanding can do. Each completed task also narrows the context for the next one.
+
+**In this repo:** The git log is a direct record of this practice. Features were shipped as discrete atomic commits — persona presets, BYOK key management, and script mode were each a separate, bounded task, not a single "add features" dump.
+
+---
+
+### 3. Context engineering
+
+Deliberately manage what the AI can see at the start of every session. Don't rely on memory or re-explanation — encode context as machine-readable documents that load automatically.
+
+**Why it works:** An AI without context makes assumptions. Those assumptions are often wrong in ways that are invisible until late in the session. Explicit context files eliminate whole categories of misunderstanding before they happen.
+
+**In this repo:** `CLAUDE.md` defines architecture constraints and commands. `LEARN-TW.md` documents every non-obvious design decision. `.env.local` conventions are specified. The AI arrives at each session already knowing the rules.
+
+---
+
+### 4. Scaffold-and-fill
+
+For large features, ask the AI to generate the full structural skeleton first — type definitions, interfaces, empty function signatures, component shells — before writing any logic. Review the scaffold as a design document. Only after approving the shape do you ask the AI to fill in the implementation.
+
+**Why it works:** The scaffold is a low-cost, high-signal artifact. It makes the AI's interpretation of the design visible and auditable before any logic is committed. Disagreements at the scaffold stage are cheap to resolve; disagreements after a full implementation are expensive.
+
+**In this repo:** The `types/index.ts` file (`AppState`, `SubtitleItem`, `ConversationState`) and `lib/conversationMachine.ts` were designed as scaffolds first — the type shapes were agreed on before the runtime logic was written.
+
+---
+
+### 5. Review-and-iterate loop
+
+Treat AI-generated code the same way you treat a junior engineer's pull request: read it carefully, identify the precise location of any issue, and give structured feedback. Vague feedback ("this doesn't look right") produces vague fixes. Precise feedback ("the `useEffect` on line 42 will create a stale closure because it captures `aiText` at mount time — use a ref instead") produces targeted, reliable changes.
+
+**Why it works:** The quality of AI output is bounded by the quality of the review. The bottleneck is never the AI's ability to fix something — it's the human's ability to identify exactly what needs fixing and articulate it unambiguously.
+
+**In this repo:** The `requestAnimationFrame` loop and the stale closure pattern documented in `CLAUDE.md` are direct outcomes of this review discipline — caught in review, explained precisely, fixed correctly.
 
 ---
 
