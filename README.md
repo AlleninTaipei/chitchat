@@ -41,8 +41,7 @@ Before writing a single line of code, co-author a complete Product Requirements 
 
 | File | Description |
 |------|-------------|
-| [`AI_Video_PRD.docx`](./AI_Video_PRD.docx) | Original PRD (Traditional Chinese) — co-authored with Claude before any code was written |
-| [`AI_Video_PRD_EN.docx`](./AI_Video_PRD_EN.docx) | English translation for international reference |
+| [`AI_Video_PRD.md`](./AI_Video_PRD.md) | PRD (English + Traditional Chinese) — co-authored with Claude before any code was written |
 
 If you're using this project as a teaching resource, read the PRD first and then trace how each requirement manifested in the code — that mapping exercise is more instructive than reading the code alone.
 
