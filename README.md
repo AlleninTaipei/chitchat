@@ -25,6 +25,29 @@ Mic → SpeechRecognition → /api/chat → Claude → streaming text chunks
 
 ---
 
+## Spec-first agentic development
+
+This project was built using a **spec-first agentic workflow** — one of the most effective patterns in modern AI-assisted engineering.
+
+The idea: before writing a single line of code, you sit down with the AI and co-author a complete Product Requirements Document (PRD). You describe the problem, debate tradeoffs, clarify scope, and let the AI push back on assumptions — all in natural language. By the time you're done, the PRD is a precise, shared mental model of what you're building and why. Only then do you ask the AI to start implementing.
+
+**Why this works:**
+
+- Ambiguity compounds in code but dissolves in conversation. Catching a scope error in a document costs seconds; catching it after three days of implementation costs days.
+- A well-constructed PRD gives the AI stable context across long sessions — it doesn't need to re-derive intent from fragmented code comments.
+- The spec becomes a contract: every implementation decision can be evaluated against "does this match the PRD?" rather than "does this feel right?"
+
+**Artifacts from this build:**
+
+| File | Description |
+|------|-------------|
+| [`AI_Video_PRD.docx`](./AI_Video_PRD.docx) | Original PRD (Traditional Chinese) — co-authored with Claude before any code was written |
+| [`AI_Video_PRD_EN.docx`](./AI_Video_PRD_EN.docx) | English translation for international reference |
+
+These documents are intentionally preserved as artifacts of the design process — not polished marketing copy, but the actual thinking that preceded the build. If you're using this project as a teaching resource, reading the PRD first and then tracing how each requirement manifested in the code is one of the most instructive exercises you can do.
+
+---
+
 ## Built with vibe coding
 
 This project was built with AI assistance from the ground up — a real-world example of what's possible when you treat Claude as a co-engineer rather than a search engine.
